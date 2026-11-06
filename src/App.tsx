@@ -6,19 +6,28 @@ import AttendanceTable from "./components/AttendanceTable";
 function App() {
   const [month, setMonth] = useState(11);
   const [year, setYear] = useState(2026);
+  const [department, setDepartment] = useState("all");
 
   return (
-    <div>
+    <div className="min-h-screen bg-slate-50">
       <AppHeader />
 
-      <AttendanceToolbar
-        month={month}
-        year={year}
-        onMonthChange={setMonth}
-        onYearChange={setYear}
-      />
+      <main className="p-6 space-y-6">
+        <AttendanceToolbar
+          month={month}
+          year={year}
+          department={department}
+          onMonthChange={setMonth}
+          onYearChange={setYear}
+          onDepartmentChange={setDepartment}
+        />
 
-      <AttendanceTable month={month} year={year} />
+        <AttendanceTable
+          month={month}
+          year={year}
+          department={department}
+        />
+      </main>
     </div>
   );
 }

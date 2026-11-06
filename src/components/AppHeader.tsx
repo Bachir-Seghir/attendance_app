@@ -1,8 +1,15 @@
 function AppHeader() {
   return (
-    <header>
-      <h1>Gestion du Pointage SOMIK</h1>
-      <p>Cette Application est dedié pour faciliter le management du personnel du SOMIK</p>
+    <header className="bg-emerald-900 text-white px-6 py-5 shadow-md">
+      <div className="max-w-full mx-auto">
+        <h1 className="text-2xl font-bold tracking-tight">
+          Attendance Management
+        </h1>
+
+        <p className="text-emerald-100 text-sm mt-1">
+          Employee attendance tracking system
+        </p>
+      </div>
     </header>
   );
 }
