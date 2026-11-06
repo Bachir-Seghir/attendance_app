@@ -1,9 +1,11 @@
 import { useEmployeeCount } from "../hooks/useEmployeeCount";
+import { useAttendanceSummary } from "../hooks/useAttendanceSummary";
 
 interface AttendanceToolbarProps {
   month: number;
-    year: number;
-    department: string;
+  year: number;
+  department: string;
+  attendance: Record<string, string>;
   onMonthChange: (month: number) => void;
   onYearChange: (year: number) => void;
   onDepartmentChange: (department: string) => void;
@@ -11,13 +13,21 @@ interface AttendanceToolbarProps {
 
 function AttendanceToolbar({
   month,
-    year,
+  year,
   department,
+  attendance,
   onMonthChange,
-    onYearChange,
+  onYearChange,
   onDepartmentChange,
 }: AttendanceToolbarProps) {
-    const totalEmployees = useEmployeeCount(department);
+  const totalEmployees = useEmployeeCount(department);
+
+  const summary = useAttendanceSummary(
+    department,
+    attendance,
+    year,
+    month
+  );
   return (
   <section className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
     <div className="flex flex-wrap items-end gap-4">
@@ -79,21 +89,55 @@ function AttendanceToolbar({
           <option value="Administration">Administration</option>
         </select>
       </div>
-<div className="flex ml-auto items-center gap-4 bg-emerald-900 text-white px-6 py-3 rounded-xl shadow-sm">
-  <div>
-    <p className="text-sm text-white-200 font-medium">
-      Personel Total Affiché 
-    </p>
+<div className="flex flex-wrap ml-auto items-center gap-3">
 
-    <p className="text-3xl font-bold">
-      {totalEmployees}
+  {/* Normal hours */}
+  <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+    <p className="text-sm text-emerald-700 font-medium">
+      Total : Heures Normales
+    </p>
+    <p className="text-2xl font-bold text-emerald-900">
+      {summary.normalHours}
     </p>
   </div>
 
-  <div className=" rounded-full bg-emerald-100 py-2 px-3">
-    <span className="text-3xl">👥</span>
+  {/* Overtime hours */}
+  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+    <p className="text-sm text-amber-700 font-medium">
+      Total : Heures Sup.
+    </p>
+    <p className="text-2xl font-bold text-amber-900">
+      {summary.overtimeHours}
+    </p>
   </div>
+
+  {/* Total hours */}
+  <div className="bg-slate-100 border border-slate-200 rounded-xl px-4 py-3">
+    <p className="text-sm text-slate-600 font-medium">
+      Total des Heures 
+    </p>
+    <p className="text-2xl font-bold text-slate-900">
+      {summary.totalHours}
+    </p>
+  </div>
+
+  {/* Employee count */}
+  <div className="flex items-center gap-4 bg-emerald-900 text-white px-6 py-3 rounded-xl shadow-sm">
+    <div>
+      <p className="text-sm text-emerald-100 font-medium">
+        Personnel Total
+      </p>
+      <p className="text-3xl font-bold">
+        {totalEmployees}
+      </p>
     </div>
+
+    <div className="rounded-full bg-emerald-100 py-2 px-3">
+      <span className="text-3xl">👥</span>
+    </div>
+  </div>
+
+</div>
 </div>
   </section>
 );
