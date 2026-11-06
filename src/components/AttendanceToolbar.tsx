@@ -1,3 +1,5 @@
+import { useEmployeeCount } from "../hooks/useEmployeeCount";
+
 interface AttendanceToolbarProps {
   month: number;
     year: number;
@@ -15,6 +17,7 @@ function AttendanceToolbar({
     onYearChange,
   onDepartmentChange,
 }: AttendanceToolbarProps) {
+    const totalEmployees = useEmployeeCount(department);
   return (
   <section className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
     <div className="flex flex-wrap items-end gap-4">
@@ -76,8 +79,22 @@ function AttendanceToolbar({
           <option value="Administration">Administration</option>
         </select>
       </div>
+<div className="flex ml-auto items-center gap-4 bg-emerald-900 text-white px-6 py-3 rounded-xl shadow-sm">
+  <div>
+    <p className="text-sm text-white-200 font-medium">
+      Personel Total Affiché 
+    </p>
 
+    <p className="text-3xl font-bold">
+      {totalEmployees}
+    </p>
+  </div>
+
+  <div className=" rounded-full bg-emerald-100 py-2 px-3">
+    <span className="text-3xl">👥</span>
+  </div>
     </div>
+</div>
   </section>
 );
 }
