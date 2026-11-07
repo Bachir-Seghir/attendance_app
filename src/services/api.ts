@@ -71,3 +71,30 @@ export async function saveAttendance(
     }),
   });
 }
+
+export async function deleteAttendance(
+  employeeId: number,
+  date: string
+): Promise<void> {
+  await apiRequest(
+    `/attendance?employeeId=${employeeId}&date=${date}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+export interface AttendanceChange {
+  employeeId: number;
+  date: string;
+  value: string;
+}
+
+export async function saveAttendanceBatch(
+  changes: AttendanceChange[]
+): Promise<void> {
+  await apiRequest("/attendance/batch", {
+    method: "POST",
+    body: JSON.stringify({ changes }),
+  });
+}

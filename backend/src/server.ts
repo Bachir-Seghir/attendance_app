@@ -292,6 +292,121 @@ app.get("/api/attendance", async (req, res) => {
     });
   }
 });
+
+app.delete("/api/attendance", async (req, res) => {
+  try {
+    const employeeId = Number(req.query.employeeId);
+    const date = req.query.date;
+
+    if (
+      !Number.isInteger(employeeId) ||
+      employeeId <= 0 ||
+      typeof date !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date)
+    ) {
+      res.status(400).json({
+        status: "error",
+        message: "Valid employee ID and date are required",
+      });
+      return;
+    }
+
+    const attendance = await prisma.attendance.deleteMany({
+      where: {
+        employeeId,
+        date: new Date(`${date}T00:00:00.000Z`),
+      },
+    });
+
+    res.json({
+      status: "success",
+      message: "Attendance deleted successfully",
+      deletedCount: attendance.count,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to delete attendance",
+    });
+  }
+});
+
+app.post("/api/attendance/batch", async (req, res) => {
+  try {
+    const { changes } = req.body;
+
+    if (!Array.isArray(changes)) {
+      res.status(400).json({
+        status: "error",
+        message: "Changes must be an array",
+      });
+      return;
+    }
+
+    const operations = changes.map((change) => {
+      const { employeeId, date, value } = change;
+
+      const parsedEmployeeId = Number(employeeId);
+
+      if (
+        !Number.isInteger(parsedEmployeeId) ||
+        parsedEmployeeId <= 0 ||
+        typeof date !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date ||
+        typeof value !== "string"
+      ) {
+        throw new Error("Invalid attendance data");
+      }
+
+      const recordDate = new Date(`${date}T00:00:00.000Z`);
+
+      if (value.trim() === "") {
+        return prisma.attendance.deleteMany({
+          where: {
+            employeeId: parsedEmployeeId,
+            date: recordDate,
+          },
+        });
+      }
+
+      return prisma.attendance.upsert({
+        where: {
+          employeeId_date: {
+            employeeId: parsedEmployeeId,
+            date: recordDate,
+          },
+        },
+        update: {
+          value: value.trim().toUpperCase(),
+        },
+        create: {
+          employeeId: parsedEmployeeId,
+          date: recordDate,
+          value: value.trim().toUpperCase(),
+        },
+      });
+    });
+
+    await prisma.$transaction(operations);
+
+    res.json({
+      status: "success",
+      message: "Attendance saved successfully!",
+      savedCount: changes.length,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to save attendance",
+    });
+  }
+});
+
 // Start server
 const PORT = process.env.PORT || 3000;
 

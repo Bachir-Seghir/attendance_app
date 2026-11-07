@@ -2,15 +2,20 @@ import { useState, useEffect } from "react";
 import AppHeader from "./components/AppHeader";
 import AttendanceToolbar from "./components/AttendanceToolbar";
 import AttendanceTable from "./components/AttendanceTable";
-import { getEmployees, getAttendance,  saveAttendance, type Employee } from "./services/api";
+import { getEmployees, getAttendance, saveAttendanceBatch , type Employee } from "./services/api";
 
 function App() {
   const [month, setMonth] = useState(11);
   const [year, setYear] = useState(2026);
   const [department, setDepartment] = useState("all");
   const [attendance, setAttendance] = useState<Record<string, string>>({});
+  const [pendingChanges, setPendingChanges] = useState<
+  Record<string, string>
+>({});
   const [employees, setEmployees] = useState<Employee[]>([]);
-
+const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  
   useEffect(() => {
   getEmployees()
     .then((data) => {
@@ -40,7 +45,7 @@ function App() {
     });
   }, [month, year]);
   
-  const handleAttendanceChange = async (
+  const handleAttendanceChange = (
   employeeId: number,
   day: number,
   value: string
@@ -52,15 +57,43 @@ function App() {
     [key]: value,
   }));
 
-  if (value.trim() === "") return;
+  setPendingChanges((previous) => ({
+    ...previous,
+    [key]: value,
+  }));
+};
+  
+  const handleSaveAttendance = async () => {
+  const changes = Object.entries(pendingChanges).map(([key, value]) => {
+    const [employeeId, day] = key.split("-").map(Number);
 
-  const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+    return { employeeId, date, value };
+  });
+
+  if (changes.length === 0) {
+    setSaveMessage("No changes to save.");
+    return;
+  }
 
   try {
-    await saveAttendance(employeeId, date, value);
-    console.log("Attendance saved successfully");
+    setIsSaving(true);
+    setSaveMessage("");
+
+    await saveAttendanceBatch(changes);
+
+    setPendingChanges({});
+    setSaveMessage("Attendance saved successfully!");
   } catch (error) {
-    console.error("Failed to save attendance:", error);
+    console.error(error);
+    setSaveMessage(
+      error instanceof Error
+        ? error.message
+        : "Failed to save attendance. Please try again."
+    );
+  } finally {
+    setIsSaving(false);
   }
 };
   
@@ -86,6 +119,10 @@ function App() {
           attendance={attendance}
           employees={employees}
           onAttendanceChange={handleAttendanceChange}
+          onSaveAttendance={handleSaveAttendance}
+          hasUnsavedChanges={Object.keys(pendingChanges).length > 0}
+          isSaving={isSaving}
+saveMessage={saveMessage}
         />
       </main>
     </div>

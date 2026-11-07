@@ -11,3 +11,18 @@ body {
   background-color: #f8fafc;
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes saveReminder {
+  0%, 100% {
+    opacity: 1;
+    background-color: rgb(243, 94, 1);
+  }
+  50% {
+    opacity: 0.4;
+    background-color: rgb(243, 94, 1);
+  }
+}
+
+.save-reminder {
+  animation: saveReminder 1s ease-in-out infinite;
+}

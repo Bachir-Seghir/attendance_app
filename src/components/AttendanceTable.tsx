@@ -1,7 +1,6 @@
 import { useRef } from "react";
 import type { Employee } from "../services/api";
 import {
-	calculateDailyHours,
 	calculateMonthlyTotals,
 } from "../utils/attendanceCalculations";
 import {
@@ -15,12 +14,16 @@ interface AttendanceTableProps {
   year: number;
   department: string;
   employees: Employee[];
-  attendance: Record<string, string>;
+	attendance: Record<string, string>;
+	hasUnsavedChanges: boolean;
+	isSaving: boolean;
+saveMessage: string;
   onAttendanceChange: (
     employeeId: number,
     day: number,
     value: string
   ) => void;
+	onSaveAttendance: () => void;
 }
 
 function AttendanceTable({
@@ -29,7 +32,11 @@ function AttendanceTable({
   department,
   employees,
   attendance,
-  onAttendanceChange,
+	onAttendanceChange,
+	hasUnsavedChanges,
+	isSaving,
+  saveMessage,
+  onSaveAttendance
 }: AttendanceTableProps) {
 	// Calculate the number of days in the selected month
 	const daysInMonth = new Date(year, month, 0).getDate();
@@ -140,9 +147,35 @@ function AttendanceTable({
 		<section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
 			{/* Table title */}
 			<div className="px-5 py-4 border-b border-gray-200">
-				<h2 className="text-lg font-semibold text-gray-800">
-					Monthly Attendance
-				</h2>
+				<div className="flex items-center justify-between gap-4">
+  <h2 className="text-lg font-semibold text-gray-800">
+    Monthly Attendance
+  </h2>
+
+  <button
+  type="button"
+  onClick={onSaveAttendance}
+  disabled={isSaving || !hasUnsavedChanges}
+  className={`px-4 py-2  hover:cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors ${
+    hasUnsavedChanges && !isSaving ? "save-reminder" : ""
+  }`}
+>
+  {isSaving ? "Sauvgarde En Cours..." : "Sauvgarder l'état Actuel"}
+					</button>
+
+					
+				</div>
+				{saveMessage && (
+  <p
+    className={`mt-2 text-sm font-medium ${
+      saveMessage.includes("successfully")
+        ? "text-green-600"
+        : "text-red-600"
+    }`}
+  >
+    {saveMessage}
+  </p>
+)}
 
 				<p className="text-sm text-gray-500 mt-1">
 					Enter the working hours for each employee.
@@ -240,10 +273,7 @@ function AttendanceTable({
 									{days.map((day) => {
 										const weekend = isWeekend(day);
 										const key = `${employee.id}-${day}`;
-										const hours = calculateDailyHours(
-											attendance[key] ?? "",
-											weekend,
-										);
+										
 										return (
 											<td
 												key={day}
