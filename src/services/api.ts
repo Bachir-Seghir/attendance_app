@@ -18,3 +18,56 @@ export async function apiRequest<T>(
 
   return response.json() as Promise<T>;
 }
+
+export interface Employee {
+  id: number;
+  name: string;
+  departmentId: number;
+  department: {
+    id: number;
+    name: string;
+  };
+}
+
+export async function getEmployees(): Promise<Employee[]> {
+  const response = await apiRequest<{
+    status: string;
+    data: Employee[];
+  }>("/employees");
+
+  return response.data;
+}
+
+export interface AttendanceRecord {
+  id: number;
+  employeeId: number;
+  date: string;
+  value: string;
+}
+
+export async function getAttendance(
+  month: number,
+  year: number
+): Promise<AttendanceRecord[]> {
+  const response = await apiRequest<{
+    status: string;
+    data: AttendanceRecord[];
+  }>(`/attendance?month=${month}&year=${year}`);
+
+  return response.data;
+}
+
+export async function saveAttendance(
+  employeeId: number,
+  date: string,
+  value: string
+): Promise<void> {
+  await apiRequest("/attendance", {
+    method: "POST",
+    body: JSON.stringify({
+      employeeId,
+      date,
+      value,
+    }),
+  });
+}

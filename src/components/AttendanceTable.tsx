@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { employees } from "../data/employees";
+import type { Employee } from "../services/api";
 import {
 	calculateDailyHours,
 	calculateMonthlyTotals,
@@ -11,19 +11,25 @@ import {
 import { ATTENDANCE_CODES } from "../utils/attendanceValidation";
 
 interface AttendanceTableProps {
-	month: number;
-	year: number;
-	department: string;
-	attendance: Record<string, string>;
-	onAttendanceChange: (employeeId: number, day: number, value: string) => void;
+  month: number;
+  year: number;
+  department: string;
+  employees: Employee[];
+  attendance: Record<string, string>;
+  onAttendanceChange: (
+    employeeId: number,
+    day: number,
+    value: string
+  ) => void;
 }
 
 function AttendanceTable({
-	month,
-	year,
-	department,
-	attendance,
-	onAttendanceChange,
+  month,
+  year,
+  department,
+  employees,
+  attendance,
+  onAttendanceChange,
 }: AttendanceTableProps) {
 	// Calculate the number of days in the selected month
 	const daysInMonth = new Date(year, month, 0).getDate();
@@ -74,9 +80,11 @@ function AttendanceTable({
 
 	// Filter employees by department
 	const filteredEmployees =
-		department === "all"
-			? employees
-			: employees.filter((employee) => employee.department === department);
+  department === "all"
+    ? employees
+    : employees.filter(
+        (employee) => employee.department.name === department
+      );
 
 	const handleCellNavigation = (
 		event: React.KeyboardEvent<HTMLInputElement>,
@@ -219,7 +227,7 @@ function AttendanceTable({
 									</td>
 
 									<td className="px-2 py-2 text-gray-600 border-b border-r whitespace-nowrap">
-										{employee.department}
+										{employee.department.name}
 									</td>
 									<td className="px-3 py-2 text-center font-semibold text-emerald-700 bg-emerald-50 border-b border-r">
 										{monthlyTotals.normalHours}
