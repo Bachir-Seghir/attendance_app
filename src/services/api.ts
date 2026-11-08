@@ -13,8 +13,12 @@ export async function apiRequest<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status}`);
-  }
+  const errorData = await response.json().catch(() => null);
+
+  throw new Error(
+    errorData?.message || `API Error: ${response.status}`
+  );
+}
 
   return response.json() as Promise<T>;
 }

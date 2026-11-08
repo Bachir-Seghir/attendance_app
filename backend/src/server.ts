@@ -2,6 +2,35 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import prisma from "./lib/prisma.js";
+
+const ATTENDANCE_CODES = [
+  "R",
+  "F",
+  "CR",
+  "CA",
+  "CF",
+  "FO",
+  "AA",
+  "AI",
+];
+
+function isValidAttendanceValue(value: string): boolean {
+  const normalized = value.trim().toUpperCase();
+
+  if (ATTENDANCE_CODES.includes(normalized)) {
+    return true;
+  }
+
+  const hours = Number(normalized);
+
+  return (
+    normalized !== "" &&
+    Number.isInteger(hours) &&
+    hours >= 0 &&
+    hours <= 24
+  );
+}
+
 dotenv.config();
 
 const app = express();
@@ -345,21 +374,41 @@ app.post("/api/attendance/batch", async (req, res) => {
       return;
     }
 
+    if (changes.length === 0) {
+  res.status(400).json({
+    status: "error",
+    message: "No attendance changes provided",
+  });
+  return;
+    }
+    
     const operations = changes.map((change) => {
       const { employeeId, date, value } = change;
 
       const parsedEmployeeId = Number(employeeId);
 
       if (
-        !Number.isInteger(parsedEmployeeId) ||
-        parsedEmployeeId <= 0 ||
-        typeof date !== "string" ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-        new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date ||
-        typeof value !== "string"
-      ) {
-        throw new Error("Invalid attendance data");
-      }
+  !Number.isInteger(parsedEmployeeId) ||
+  parsedEmployeeId <= 0 ||
+  typeof date !== "string" ||
+  !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+  typeof value !== "string"
+) {
+  throw new Error("Invalid attendance data");
+}
+
+const parsedDate = new Date(`${date}T00:00:00.000Z`);
+
+if (
+  Number.isNaN(parsedDate.getTime()) ||
+  parsedDate.toISOString().slice(0, 10) !== date
+) {
+  throw new Error("Invalid attendance date");
+}
+
+if (value.trim() !== "" && !isValidAttendanceValue(value)) {
+  throw new Error(`Invalid attendance value: ${value}`);
+}
 
       const recordDate = new Date(`${date}T00:00:00.000Z`);
 
@@ -397,14 +446,22 @@ app.post("/api/attendance/batch", async (req, res) => {
       message: "Attendance saved successfully!",
       savedCount: changes.length,
     });
-  } catch (error) {
-    console.error(error);
+ } catch (error) {
+  console.error(error);
 
-    res.status(500).json({
+  if (error instanceof Error && error.message.startsWith("Invalid")) {
+    res.status(400).json({
       status: "error",
-      message: "Failed to save attendance",
+      message: error.message,
     });
+    return;
   }
+
+  res.status(500).json({
+    status: "error",
+    message: "Failed to save attendance",
+  });
+}
 });
 
 // Start server

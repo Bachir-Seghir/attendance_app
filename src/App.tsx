@@ -49,7 +49,8 @@ const [isSaving, setIsSaving] = useState(false);
   employeeId: number,
   day: number,
   value: string
-) => {
+  ) => {
+    setSaveMessage("");
   const key = `${employeeId}-${day}`;
 
   setAttendance((previous) => ({
@@ -64,7 +65,8 @@ const [isSaving, setIsSaving] = useState(false);
 };
   
   const handleSaveAttendance = async () => {
-  const changes = Object.entries(pendingChanges).map(([key, value]) => {
+    const changesToSave = { ...pendingChanges };
+  const changes = Object.entries(changesToSave).map(([key, value]) => {
     const [employeeId, day] = key.split("-").map(Number);
 
     const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -83,7 +85,17 @@ const [isSaving, setIsSaving] = useState(false);
 
     await saveAttendanceBatch(changes);
 
-    setPendingChanges({});
+    setPendingChanges((current) => {
+  const remaining = { ...current };
+
+  Object.entries(changesToSave).forEach(([key, savedValue]) => {
+    if (remaining[key] === savedValue) {
+      delete remaining[key];
+    }
+  });
+
+  return remaining;
+});
     setSaveMessage("Attendance saved successfully!");
   } catch (error) {
     console.error(error);
@@ -95,8 +107,36 @@ const [isSaving, setIsSaving] = useState(false);
   } finally {
     setIsSaving(false);
   }
+  };
+  
+  const handleMonthChange = (newMonth: number) => {
+  if (Object.keys(pendingChanges).length > 0) {
+    setSaveMessage("Please save your attendance changes before changing the month.");
+    return;
+  }
+
+  setMonth(newMonth);
+};
+
+const handleYearChange = (newYear: number) => {
+  if (Object.keys(pendingChanges).length > 0) {
+    setSaveMessage("Please save your attendance changes before changing the year.");
+    return;
+  }
+
+  setYear(newYear);
 };
   
+  const handleDepartmentChange = (newDepartment: string) => {
+  if (Object.keys(pendingChanges).length > 0) {
+    setSaveMessage(
+      "Please save your attendance changes before changing the department."
+    );
+    return;
+  }
+
+  setDepartment(newDepartment);
+};
   return (
     <div className="min-h-screen bg-slate-50">
       <AppHeader />
@@ -107,9 +147,9 @@ const [isSaving, setIsSaving] = useState(false);
           year={year}
           department={department}
           attendance={attendance}
-          onMonthChange={setMonth}
-          onYearChange={setYear}
-          onDepartmentChange={setDepartment}
+          onMonthChange={handleMonthChange}
+onYearChange={handleYearChange}
+onDepartmentChange={handleDepartmentChange}
         />
 
         <AttendanceTable
