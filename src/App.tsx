@@ -13,20 +13,36 @@ function App() {
   Record<string, string>
 >({});
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [isLoadingEmployees, setIsLoadingEmployees] = useState(true);
+const [employeesError, setEmployeesError] = useState("");
 const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
   
   useEffect(() => {
   getEmployees()
     .then((data) => {
       setEmployees(data);
+      setEmployeesError("");
     })
     .catch((error) => {
       console.error("Failed to load employees:", error);
+      setEmployeesError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load employees."
+      );
+    })
+    .finally(() => {
+      setIsLoadingEmployees(false);
     });
-  }, []);
+}, []);
   
   useEffect(() => {
+  setIsLoadingAttendance(true);
+  setAttendanceError("");
+
   getAttendance(month, year)
     .then((data) => {
       const attendanceData: Record<string, string> = {};
@@ -42,8 +58,17 @@ const [isSaving, setIsSaving] = useState(false);
     })
     .catch((error) => {
       console.error("Failed to load attendance:", error);
+
+      setAttendanceError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load attendance."
+      );
+    })
+    .finally(() => {
+      setIsLoadingAttendance(false);
     });
-  }, [month, year]);
+}, [month, year]);
   
   const handleAttendanceChange = (
   employeeId: number,
@@ -110,6 +135,11 @@ const [isSaving, setIsSaving] = useState(false);
   };
   
   const handleMonthChange = (newMonth: number) => {
+    if (isSaving) {
+  setSaveMessage("Please wait until attendance saving is complete.");
+  return;
+    }
+    
   if (Object.keys(pendingChanges).length > 0) {
     setSaveMessage("Please save your attendance changes before changing the month.");
     return;
@@ -118,7 +148,11 @@ const [isSaving, setIsSaving] = useState(false);
   setMonth(newMonth);
 };
 
-const handleYearChange = (newYear: number) => {
+  const handleYearChange = (newYear: number) => {
+  if (isSaving) {
+  setSaveMessage("Please wait until attendance saving is complete.");
+  return;
+}
   if (Object.keys(pendingChanges).length > 0) {
     setSaveMessage("Please save your attendance changes before changing the year.");
     return;
@@ -128,6 +162,10 @@ const handleYearChange = (newYear: number) => {
 };
   
   const handleDepartmentChange = (newDepartment: string) => {
+    if (isSaving) {
+  setSaveMessage("Please wait until attendance saving is complete.");
+  return;
+}
   if (Object.keys(pendingChanges).length > 0) {
     setSaveMessage(
       "Please save your attendance changes before changing the department."
@@ -162,7 +200,11 @@ onDepartmentChange={handleDepartmentChange}
           onSaveAttendance={handleSaveAttendance}
           hasUnsavedChanges={Object.keys(pendingChanges).length > 0}
           isSaving={isSaving}
-saveMessage={saveMessage}
+          saveMessage={saveMessage}
+          isLoadingEmployees={isLoadingEmployees}
+          employeesError={employeesError}
+          isLoadingAttendance={isLoadingAttendance}
+attendanceError={attendanceError}
         />
       </main>
     </div>

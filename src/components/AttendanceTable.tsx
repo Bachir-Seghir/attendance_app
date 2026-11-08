@@ -1,8 +1,6 @@
 import { useRef } from "react";
 import type { Employee } from "../services/api";
-import {
-	calculateMonthlyTotals,
-} from "../utils/attendanceCalculations";
+import { calculateMonthlyTotals } from "../utils/attendanceCalculations";
 import {
 	validateAttendanceInput,
 	isValidAttendanceValue,
@@ -10,33 +8,37 @@ import {
 import { ATTENDANCE_CODES } from "../utils/attendanceValidation";
 
 interface AttendanceTableProps {
-  month: number;
-  year: number;
-  department: string;
-  employees: Employee[];
+	month: number;
+	year: number;
+	department: string;
+	employees: Employee[];
 	attendance: Record<string, string>;
 	hasUnsavedChanges: boolean;
 	isSaving: boolean;
-saveMessage: string;
-  onAttendanceChange: (
-    employeeId: number,
-    day: number,
-    value: string
-  ) => void;
+	saveMessage: string;
+	isLoadingEmployees: boolean;
+	employeesError: string;
+	isLoadingAttendance: boolean;
+attendanceError: string;
+	onAttendanceChange: (employeeId: number, day: number, value: string) => void;
 	onSaveAttendance: () => void;
 }
 
 function AttendanceTable({
-  month,
-  year,
-  department,
-  employees,
-  attendance,
+	month,
+	year,
+	department,
+	employees,
+	attendance,
 	onAttendanceChange,
 	hasUnsavedChanges,
 	isSaving,
-  saveMessage,
-  onSaveAttendance
+	saveMessage,
+	onSaveAttendance,
+	isLoadingEmployees,
+	employeesError,
+	isLoadingAttendance,
+  attendanceError,
 }: AttendanceTableProps) {
 	// Calculate the number of days in the selected month
 	const daysInMonth = new Date(year, month, 0).getDate();
@@ -87,11 +89,9 @@ function AttendanceTable({
 
 	// Filter employees by department
 	const filteredEmployees =
-  department === "all"
-    ? employees
-    : employees.filter(
-        (employee) => employee.department.name === department
-      );
+		department === "all"
+			? employees
+			: employees.filter((employee) => employee.department.name === department);
 
 	const handleCellNavigation = (
 		event: React.KeyboardEvent<HTMLInputElement>,
@@ -148,34 +148,32 @@ function AttendanceTable({
 			{/* Table title */}
 			<div className="px-5 py-4 border-b border-gray-200">
 				<div className="flex items-center justify-between gap-4">
-  <h2 className="text-lg font-semibold text-gray-800">
-    Monthly Attendance
-  </h2>
+					<h2 className="text-lg font-semibold text-gray-800">
+						Monthly Attendance
+					</h2>
 
-  <button
-  type="button"
-  onClick={onSaveAttendance}
-  disabled={isSaving || !hasUnsavedChanges}
-  className={`px-4 py-2  hover:cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors ${
-    hasUnsavedChanges && !isSaving ? "save-reminder" : ""
-  }`}
->
-  {isSaving ? "Sauvgarde En Cours..." : "Sauvgarder l'état Actuel"}
+					<button
+						type="button"
+						onClick={onSaveAttendance}
+						disabled={isSaving || !hasUnsavedChanges}
+						className={`px-4 py-2  hover:cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors ${
+							hasUnsavedChanges && !isSaving ? "save-reminder" : ""
+						}`}
+					>
+						{isSaving ? "Sauvgarde En Cours..." : "Sauvgarder l'état Actuel"}
 					</button>
-
-					
 				</div>
 				{saveMessage && (
-  <p
-    className={`mt-2 text-sm font-medium ${
-      saveMessage.includes("successfully")
-        ? "text-green-600"
-        : "text-red-600"
-    }`}
-  >
-    {saveMessage}
-  </p>
-)}
+					<p
+						className={`mt-2 text-sm font-medium ${
+							saveMessage.includes("successfully")
+								? "text-green-600"
+								: "text-red-600"
+						}`}
+					>
+						{saveMessage}
+					</p>
+				)}
 
 				<p className="text-sm text-gray-500 mt-1">
 					Enter the working hours for each employee.
@@ -242,88 +240,132 @@ function AttendanceTable({
 					</thead>
 
 					<tbody>
-						{filteredEmployees.map((employee, employeeIndex) => {
-							const monthlyTotals = calculateMonthlyTotals(
-								employee.id,
-								attendance,
-								year,
-								month,
-							);
-
-							return (
-								<tr
-									key={employee.id}
-									className="hover:bg-blue-50 transition-colors"
-								>
-									<td className="sticky left-0 z-10 bg-white px-2 py-2 font-medium text-gray-800 border-b border-r whitespace-nowrap">
-										{employee.name}
-									</td>
-
-									<td className="px-2 py-2 text-gray-600 border-b border-r whitespace-nowrap">
-										{employee.department.name}
-									</td>
-									<td className="px-3 py-2 text-center font-semibold text-emerald-700 bg-emerald-50 border-b border-r">
-										{monthlyTotals.normalHours}
-									</td>
-
-									<td className="px-3 py-2 text-center font-semibold text-orange-700 bg-orange-50 border-b border-r">
-										{monthlyTotals.overtimeHours}
-									</td>
-									{/* Attendance cells */}
-									{days.map((day) => {
-										const weekend = isWeekend(day);
-										const key = `${employee.id}-${day}`;
-										
-										return (
-											<td
-												key={day}
-												className={`p-1 border-b border-r text-center ${
-													weekend ? "bg-red-100" : "bg-white"
-												}`}
-											>
-                                                <input
-                                                    onFocus={(event) => event.target.select()}
-													ref={(element) => {
-														inputRefs.current[key] = element;
-													}}
-													onKeyDown={(event) =>
-														handleCellNavigation(event, employeeIndex, day)
-													}
-													maxLength={5}
-													autoComplete="off"
-													type="text"
-													value={attendance[key] ?? ""}
-													onChange={(event) =>
-														handleAttendanceChange(
-															employee.id,
-															day,
-															event.target.value,
-														)
-													}
-													onBlur={() => handleAttendanceBlur(employee.id, day)}
-													className={`w-10 h-9 text-center rounded-md border border-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400 ${
-														weekend
-															? "bg-red-300 text-red-950"
-															: "bg-gray-100 text-gray-900"
-													}`}
-												/>
-											</td>
-										);
-									})}
-								</tr>
-							);
-						})}
-
-						{/* Empty department message */}
-						{filteredEmployees.length === 0 && (
+						{isLoadingEmployees ? (
 							<tr>
 								<td
 									colSpan={days.length + 4}
 									className="text-center py-10 text-gray-500"
 								>
-									No employees found.
+									Loading employees...
 								</td>
 							</tr>
+						) : employeesError ? (
+							<tr>
+								<td
+									colSpan={days.length + 4}
+									className="text-center py-10 text-red-600"
+								>
+									{employeesError}
+								</td>
+							</tr>
+						) : isLoadingAttendance ? (
+    <tr>
+        <td
+            colSpan={days.length + 4}
+            className="text-center py-10 text-gray-500"
+        >
+            Loading attendance...
+        </td>
+    </tr>
+) : attendanceError ? (
+    <tr>
+        <td
+            colSpan={days.length + 4}
+            className="text-center py-10 text-red-600"
+        >
+            {attendanceError}
+        </td>
+    </tr>
+) : (
+    <>
+								{filteredEmployees.map((employee, employeeIndex) => {
+									const monthlyTotals = calculateMonthlyTotals(
+										employee.id,
+										attendance,
+										year,
+										month,
+									);
+
+									return (
+										<tr
+											key={employee.id}
+											className="hover:bg-blue-50 transition-colors"
+										>
+											<td className="sticky left-0 z-10 bg-white px-2 py-2 font-medium text-gray-800 border-b border-r whitespace-nowrap">
+												{employee.name}
+											</td>
+
+											<td className="px-2 py-2 text-gray-600 border-b border-r whitespace-nowrap">
+												{employee.department.name}
+											</td>
+											<td className="px-3 py-2 text-center font-semibold text-emerald-700 bg-emerald-50 border-b border-r">
+												{monthlyTotals.normalHours}
+											</td>
+
+											<td className="px-3 py-2 text-center font-semibold text-orange-700 bg-orange-50 border-b border-r">
+												{monthlyTotals.overtimeHours}
+											</td>
+											{/* Attendance cells */}
+											{days.map((day) => {
+												const weekend = isWeekend(day);
+												const key = `${employee.id}-${day}`;
+
+												return (
+													<td
+														key={day}
+														className={`p-1 border-b border-r text-center ${
+															weekend ? "bg-red-100" : "bg-white"
+														}`}
+													>
+														<input
+															onFocus={(event) => event.target.select()}
+															ref={(element) => {
+																inputRefs.current[key] = element;
+															}}
+															onKeyDown={(event) =>
+																handleCellNavigation(event, employeeIndex, day)
+															}
+															maxLength={5}
+															autoComplete="off"
+															type="text"
+															value={attendance[key] ?? ""}
+															onChange={(event) =>
+																handleAttendanceChange(
+																	employee.id,
+																	day,
+																	event.target.value,
+																)
+															}
+															onBlur={() =>
+																handleAttendanceBlur(employee.id, day)
+															}
+															className={`w-10 h-9 text-center rounded-md border border-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400 ${
+																weekend
+																	? "bg-red-300 text-red-950"
+																	: "bg-gray-100 text-gray-900"
+															}`}
+														/>
+													</td>
+												);
+											})}
+										</tr>
+									);
+								})}
+
+								{/* Empty department message */}
+								{!isLoadingEmployees &&
+									!employeesError &&
+									filteredEmployees.length === 0 && (
+										<tr>
+											<td
+												colSpan={days.length + 4}
+												className="text-center py-10 text-gray-500"
+											>
+												No employees found.
+											</td>
+										</tr>
+									)}
+							</>
 						)}
 					</tbody>
 				</table>
