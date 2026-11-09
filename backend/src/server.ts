@@ -1,10 +1,12 @@
-import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import prisma from "./lib/prisma.js";
 import authRoutes from "./routes/auth.js";
 import { Role } from "@prisma/client";
-import type { Request } from "express";
+import express, {
+    type Request as ExpressRequest,
+    type Response as ExpressResponse,
+} from "express";
 import {
   authenticateToken,
   authorizeRoles,
@@ -41,7 +43,7 @@ function isValidAttendanceValue(value: string): boolean {
 
 const ATTENDANCE_EDIT_DEADLINE_DAYS = 4;
 
-function getAuthenticatedUser(req: Request) {
+function getAuthenticatedUser(req: ExpressRequest) {
   return (req as AuthenticatedRequest).user!;
 }
 
@@ -77,7 +79,7 @@ function getAttendanceDeadline(date: Date): Date {
 }
 
 async function checkAttendanceWriteAccess(
-  req: Request,
+  req: ExpressRequest,
   employeeId: number,
   date: Date
 ): Promise<string | null> {
@@ -208,6 +210,116 @@ app.post("/api/departments",authenticateToken, authorizeRoles(Role.SUPER_ADMIN),
   }
 });
 
+app.patch(
+  "/api/departments/:id",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN),
+  async (req: ExpressRequest, res: ExpressResponse) => {
+    const id = Number(req.params.id);
+    const name =
+      typeof req.body.name === "string" ? req.body.name.trim() : "";
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ status: "error", message: "Invalid department ID." });
+      return;
+    }
+
+    if (!name || name.length > 100) {
+      res.status(400).json({
+        status: "error",
+        message: "Department name must contain between 1 and 100 characters.",
+      });
+      return;
+    }
+
+    try {
+      const existing = await prisma.department.findUnique({ where: { id } });
+
+      if (!existing) {
+        res.status(404).json({ status: "error", message: "Department not found." });
+        return;
+      }
+
+      const department = await prisma.department.update({
+        where: { id },
+        data: { name },
+      });
+
+      res.json({ status: "success", department });
+    } catch (error) {
+      if ((error as { code?: string }).code === "P2002") {
+        res.status(409).json({
+          status: "error",
+          message: "A department with this name already exists.",
+        });
+        return;
+      }
+
+      console.error("Failed to update department:", error);
+      res.status(500).json({
+        status: "error",
+        message: "Failed to update department.",
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/departments/:id",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN),
+  async (req: ExpressRequest, res: ExpressResponse) => {
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ status: "error", message: "Invalid department ID." });
+      return;
+    }
+
+    try {
+      const department = await prisma.department.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          name: true,
+          _count: {
+            select: {
+              employees: true,
+              users: true,
+            },
+          },
+        },
+      });
+
+      if (!department) {
+        res.status(404).json({ status: "error", message: "Department not found." });
+        return;
+      }
+
+      if (department._count.employees > 0 || department._count.users > 0) {
+        res.status(409).json({
+          status: "error",
+          message:
+            "This department cannot be deleted because employees or users are assigned to it.",
+        });
+        return;
+      }
+
+      await prisma.department.delete({ where: { id } });
+
+      res.json({
+        status: "success",
+        message: "Department deleted successfully.",
+      });
+    } catch (error) {
+      console.error("Failed to delete department:", error);
+      res.status(500).json({
+        status: "error",
+        message: "Failed to delete department.",
+      });
+    }
+  }
+);
 
 app.post("/api/employees",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Role.MANAGER), async (req, res) => {
   try {
