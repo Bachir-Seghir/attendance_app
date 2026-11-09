@@ -379,33 +379,39 @@ app.post("/api/employees",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Ro
   }
 });
 
-app.get("/api/employees",authenticateToken, async (req, res) => {
+app.get("/api/employees", authenticateToken, async (req, res) => {
   try {
     const user = getAuthenticatedUser(req);
 
-if (
-  user.role === Role.ATTENDANCE_OFFICER &&
-  user.departmentId === null
-) {
-  res.status(403).json({
-    status: "error",
-    message: "Your account has no assigned department.",
-  });
-  return;
-}
+    if (
+      user.role === Role.ATTENDANCE_OFFICER &&
+      user.departmentId === null
+    ) {
+      res.status(403).json({
+        status: "error",
+        message: "Your account has no assigned department.",
+      });
+      return;
+    }
 
-const employees = await prisma.employee.findMany({
-  where:
-    user.role === Role.ATTENDANCE_OFFICER
-      ? { departmentId: user.departmentId! }
-      : {},
-  include: {
-    department: true,
-  },
-  orderBy: {
-    name: "asc",
-  },
-});
+    const includeInactive =
+      req.query.includeInactive === "true" &&
+      (user.role === Role.SUPER_ADMIN || user.role === Role.MANAGER);
+
+    const employees = await prisma.employee.findMany({
+      where: {
+        isActive: includeInactive ? undefined : true,
+        ...(user.role === Role.ATTENDANCE_OFFICER
+          ? { departmentId: user.departmentId! }
+          : {}),
+      },
+      include: {
+        department: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    });
 
     res.json({
       status: "success",
@@ -420,6 +426,232 @@ const employees = await prisma.employee.findMany({
     });
   }
 });
+
+app.patch(
+  "/api/employees/:id",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.MANAGER),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const { name, departmentId } = req.body;
+
+      if (!Number.isInteger(id) || id <= 0) {
+        res.status(400).json({
+          status: "error",
+          message: "Invalid employee ID",
+        });
+        return;
+      }
+
+      const existingEmployee = await prisma.employee.findUnique({
+        where: { id },
+      });
+
+      if (!existingEmployee) {
+        res.status(404).json({
+          status: "error",
+          message: "Employee not found",
+        });
+        return;
+      }
+
+      const data: {
+        name?: string;
+        departmentId?: number;
+      } = {};
+
+      if (name !== undefined) {
+        if (
+          typeof name !== "string" ||
+          !name.trim() ||
+          name.trim().length > 100
+        ) {
+          res.status(400).json({
+            status: "error",
+            message: "Employee name must be between 1 and 100 characters",
+          });
+          return;
+        }
+
+        data.name = name.trim();
+      }
+
+      if (departmentId !== undefined) {
+        const parsedDepartmentId = Number(departmentId);
+
+        if (
+          !Number.isInteger(parsedDepartmentId) ||
+          parsedDepartmentId <= 0
+        ) {
+          res.status(400).json({
+            status: "error",
+            message: "A valid department ID is required",
+          });
+          return;
+        }
+
+        const department = await prisma.department.findUnique({
+          where: { id: parsedDepartmentId },
+        });
+
+        if (!department) {
+          res.status(404).json({
+            status: "error",
+            message: "Department not found",
+          });
+          return;
+        }
+
+        data.departmentId = parsedDepartmentId;
+      }
+
+      if (Object.keys(data).length === 0) {
+        res.status(400).json({
+          status: "error",
+          message: "No changes provided",
+        });
+        return;
+      }
+
+      const employee = await prisma.employee.update({
+        where: { id },
+        data,
+        include: {
+          department: true,
+        },
+      });
+
+      res.json({
+        status: "success",
+        data: employee,
+      });
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to update employee",
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/employees/:id",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.MANAGER),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isInteger(id) || id <= 0) {
+        res.status(400).json({
+          status: "error",
+          message: "Invalid employee ID",
+        });
+        return;
+      }
+
+      const employee = await prisma.employee.findUnique({
+        where: { id },
+      });
+
+      if (!employee) {
+        res.status(404).json({
+          status: "error",
+          message: "Employee not found",
+        });
+        return;
+      }
+
+      if (!employee.isActive) {
+        res.status(400).json({
+          status: "error",
+          message: "Employee is already inactive",
+        });
+        return;
+      }
+
+      await prisma.employee.update({
+        where: { id },
+        data: { isActive: false },
+      });
+
+      res.json({
+        status: "success",
+        message: "Employee deactivated successfully",
+      });
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to deactivate employee",
+      });
+    }
+  }
+);
+
+app.patch(
+  "/api/employees/:id/restore",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.MANAGER),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isInteger(id) || id <= 0) {
+        res.status(400).json({
+          status: "error",
+          message: "Invalid employee ID",
+        });
+        return;
+      }
+
+      const employee = await prisma.employee.findUnique({
+        where: { id },
+      });
+
+      if (!employee) {
+        res.status(404).json({
+          status: "error",
+          message: "Employee not found",
+        });
+        return;
+      }
+
+      if (employee.isActive) {
+        res.status(400).json({
+          status: "error",
+          message: "Employee is already active",
+        });
+        return;
+      }
+
+      const restoredEmployee = await prisma.employee.update({
+        where: { id },
+        data: { isActive: true },
+        include: {
+          department: true,
+        },
+      });
+
+      res.json({
+        status: "success",
+        data: restoredEmployee,
+      });
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to reactivate employee",
+      });
+    }
+  }
+);
+
 
 app.post("/api/attendance",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER), async (req, res) => {
   try {

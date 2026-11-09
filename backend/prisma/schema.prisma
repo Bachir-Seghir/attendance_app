@@ -37,6 +37,7 @@ model Employee {
   id           Int          @id @default(autoincrement())
   name         String
   departmentId Int
+  isActive     Boolean      @default(true)
   attendance   Attendance[]
   department   Department   @relation(fields: [departmentId], references: [id])
   createdAt    DateTime     @default(now())
