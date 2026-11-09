@@ -69,6 +69,23 @@ export interface AuthUser {
   departmentId: number | null;
 }
 
+export type UserRole =
+    | "SUPER_ADMIN"
+    | "MANAGER"
+    | "ATTENDANCE_OFFICER"
+    | "VISITOR";
+
+export interface ManagedUser {
+    id: number;
+    name: string;
+    email: string;
+    role: UserRole;
+    departmentId: number | null;
+    isActive: boolean;
+    createdAt: string;
+    department?: Department | null;
+}
+
 interface LoginResponse {
   status: string;
   token: string;
@@ -205,4 +222,63 @@ export async function getDepartments(): Promise<Department[]> {
     }>("/departments");
 
     return response.data;
+}
+
+//* USER MANAGEMENT *
+
+export async function getUsers(): Promise<ManagedUser[]> {
+    const response = await apiRequest<{
+        status: string;
+        data: ManagedUser[];
+    }>("/users");
+
+    return response.data;
+}
+
+export async function createUser(data: {
+    name: string;
+    email: string;
+    password: string;
+    role: UserRole;
+    departmentId: number | null;
+}): Promise<void> {
+    await apiRequest("/users", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+}
+
+export async function updateUser(
+    id: number,
+    data: {
+        name: string;
+        email: string;
+        role: UserRole;
+        departmentId: number | null;
+    }
+): Promise<void> {
+    await apiRequest(`/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+    });
+}
+
+export async function changeUserStatus(
+    id: number,
+    isActive: boolean
+): Promise<void> {
+    await apiRequest(`/users/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive }),
+    });
+}
+
+export async function resetUserPassword(
+    id: number,
+    password: string
+): Promise<void> {
+    await apiRequest(`/users/${id}/password`, {
+        method: "PATCH",
+        body: JSON.stringify({ password }),
+    });
 }

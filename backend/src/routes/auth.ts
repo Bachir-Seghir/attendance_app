@@ -30,7 +30,15 @@ router.post("/login", async (req, res) => {
       where: { email: email.trim().toLowerCase() },
     });
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!user || !user.isActive) {
+    res.status(401).json({
+        status: "error",
+        message: "Invalid email or password.",
+    });
+    return;
+    }
+    
+    if (!(await bcrypt.compare(password, user.password))) {
       res.status(401).json({
         status: "error",
         message: "Invalid email or password.",

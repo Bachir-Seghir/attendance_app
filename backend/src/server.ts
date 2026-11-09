@@ -12,6 +12,7 @@ import {
   authorizeRoles,
   type AuthenticatedRequest,
 } from "./middleware/auth.js";
+import usersRoutes from "./routes/users.js";
 
 const ATTENDANCE_CODES = [
   "R",
@@ -134,6 +135,7 @@ app.use(cors({
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
+app.use("/api/users", usersRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

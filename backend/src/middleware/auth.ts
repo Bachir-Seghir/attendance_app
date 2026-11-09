@@ -62,10 +62,11 @@ export async function authenticateToken(
         id: true,
         role: true,
         departmentId: true,
+        isActive: true,
       },
     });
 
-    if (!user) {
+    if (!user || !user.isActive) {
       res.status(401).json({
         status: "error",
         message: "User account not found.",

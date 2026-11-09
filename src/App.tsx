@@ -9,6 +9,7 @@ import { getUserPermissions } from "./utils/permissions";
 import AddDepartment from "./components/AddDepartment";
 import ManageDepartments from "./components/ManageDepartments";
 import ManageEmployees from "./components/ManageEmployees";
+import ManageUsers from "./components/ManageUsers";
 
 interface AttendanceAppProps {
   canEditAttendance: boolean;
@@ -217,6 +218,10 @@ useEffect(() => {
       <AppHeader />
       <main className="p-6 space-y-6">
         <div className="flex flex-wrap items-center gap-3">
+          {user.role === "SUPER_ADMIN" && (
+    <ManageUsers departments={departments} />
+)}
+          
     {user.role === "SUPER_ADMIN" && (
         <AddDepartment onDepartmentAdded={loadDepartments} />
     )}

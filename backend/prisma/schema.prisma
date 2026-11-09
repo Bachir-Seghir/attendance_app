@@ -29,6 +29,7 @@ model User {
   password     String
   role         Role        @default(VISITOR)
   departmentId Int?
+  isActive     Boolean      @default(true)
   department   Department? @relation(fields: [departmentId], references: [id])
   createdAt    DateTime    @default(now())
 }
