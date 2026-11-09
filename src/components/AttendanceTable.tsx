@@ -93,9 +93,17 @@ function AttendanceTable({
 
 	// Filter employees by department
 	const filteredEmployees =
-		department === "all"
-			? employees
-			: employees.filter((employee) => employee.department.name === department);
+    (department === "all"
+        ? employees
+        : employees.filter((employee) => employee.department.name === department)
+    ).filter((employee) => {
+        if (employee.isActive) return true;
+
+        return days.some((day) => {
+            const key = `${employee.id}-${day}`;
+            return (attendance[key] ?? "").trim() !== "";
+        });
+    });
 
 	const handleCellNavigation = (
 		event: React.KeyboardEvent<HTMLInputElement>,
@@ -141,10 +149,27 @@ function AttendanceTable({
 			return;
 		}
 
-		const nextEmployee = filteredEmployees[nextEmployeeIndex];
-		const nextKey = `${nextEmployee.id}-${nextDay}`;
+		// Skip inactive employees when navigating vertically
+if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    const direction = event.key === "ArrowUp" ? -1 : 1;
 
-		inputRefs.current[nextKey]?.focus();
+    while (
+        nextEmployeeIndex >= 0 &&
+        nextEmployeeIndex < employeeCount &&
+        !filteredEmployees[nextEmployeeIndex].isActive
+    ) {
+        nextEmployeeIndex += direction;
+    }
+}
+
+if (nextEmployeeIndex < 0 || nextEmployeeIndex >= employeeCount) {
+    return;
+}
+
+const nextEmployee = filteredEmployees[nextEmployeeIndex];
+const nextKey = `${nextEmployee.id}-${nextDay}`;
+
+inputRefs.current[nextKey]?.focus();
 	};
 
 	return (
@@ -293,20 +318,38 @@ function AttendanceTable({
 									return (
 										<tr
 											key={employee.id}
-											className="hover:bg-blue-50 transition-colors"
+											className={
+    employee.isActive
+        ? "hover:bg-blue-50 transition-colors"
+        : "bg-gray-100 text-gray-400"
+}
 										>
-											<td className="sticky left-0 z-10 bg-white px-2 py-2 font-medium text-gray-800 border-b border-r whitespace-nowrap">
+											<td className={`sticky left-0 z-10 px-2 py-2 font-medium border-b border-r whitespace-nowrap ${
+    employee.isActive
+        ? "bg-white text-gray-800"
+        : "bg-gray-200 text-gray-500"
+}`}>
 												{employee.name}
 											</td>
 
-											<td className="px-2 py-2 text-gray-600 border-b border-r whitespace-nowrap">
+											<td className={`px-2 py-2 border-b border-r whitespace-nowrap ${
+    employee.isActive ? "text-gray-600" : "text-gray-400 bg-gray-100"
+}`}>
 												{employee.department.name}
 											</td>
-											<td className="px-3 py-2 text-center font-semibold text-emerald-700 bg-emerald-50 border-b border-r">
+											<td className={`px-3 py-2 text-center font-semibold border-b border-r ${
+    employee.isActive
+        ? "text-emerald-700 bg-emerald-50"
+        : "text-gray-400 bg-gray-200"
+}`}>
 												{monthlyTotals.normalHours}
 											</td>
 
-											<td className="px-3 py-2 text-center font-semibold text-orange-700 bg-orange-50 border-b border-r">
+											<td className={`px-3 py-2 text-center font-semibold border-b border-r ${
+    employee.isActive
+        ? "text-orange-700 bg-orange-50"
+        : "text-gray-400 bg-gray-200"
+}`}>
 												{monthlyTotals.overtimeHours}
 											</td>
 											{/* Attendance cells */}
@@ -318,11 +361,15 @@ function AttendanceTable({
 													<td
 														key={day}
 														className={`p-1 border-b border-r text-center ${
-															weekend ? "bg-red-100" : "bg-white"
-														}`}
+    !employee.isActive
+        ? "bg-gray-200"
+        : weekend
+          ? "bg-red-100"
+          : "bg-white"
+}`}
 													>
 														<input
-															readOnly={!canEditAttendance}
+															disabled={!canEditAttendance || !employee.isActive}
 															onFocus={(event) => event.target.select()}
 															ref={(element) => {
 																inputRefs.current[key] = element;
@@ -344,11 +391,17 @@ function AttendanceTable({
 															onBlur={() =>
 																handleAttendanceBlur(employee.id, day)
 															}
-															className={`w-10 h-9 text-center rounded-md border border-gray-300 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400 ${
-																weekend
-																	? "bg-red-300 text-red-950"
-																	: "bg-gray-100 text-gray-900"
-															} ${!canEditAttendance ? "cursor-default" : ""}`}
+															className={`w-10 h-9 text-center rounded-md border outline-none ${
+    !employee.isActive
+        ? "bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed"
+        : weekend
+          ? "bg-red-300 text-red-950 border-gray-300"
+          : "bg-gray-100 text-gray-900 border-gray-300"
+} ${
+    employee.isActive && canEditAttendance
+        ? "focus:border-blue-400 focus:ring-2 focus:ring-blue-400"
+        : ""
+}`}
 														/>
 													</td>
 												);

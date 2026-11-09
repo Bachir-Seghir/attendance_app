@@ -68,7 +68,7 @@ export default function AddDepartment({
                     setError("");
                     setSuccess("");
                 }}
-                className="ml-auto px-4 py-2 bg-emerald-700 hover:cursor-pointer hover:bg-emerald-900 text-white text-sm font-semibold rounded-lg transition-colors"
+                className="ml-auto px-4 py-2 bg-emerald-700 hover:cursor-pointer hover:bg-emerald-900 text-white rounded-lg transition-colors"
             >
                 + Ajouter une Structure
             </button>
@@ -82,7 +82,7 @@ export default function AddDepartment({
                 >
                     <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
                         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                            <h2 className="text-lg font-semibold text-gray-800">
+                            <h2 className="text-xl font-semibold text-gray-800">
                                 Ajouter une Structure
                             </h2>
 

@@ -194,7 +194,7 @@ export default function ManageEmployees({
                     setSuccess("");
                     resetForm();
                 }}
-                className="rounded-lg bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800"
+                className="rounded-lg bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800 hover:cursor-pointer"
             >
                 Manage Employees
             </button>
@@ -336,7 +336,7 @@ export default function ManageEmployees({
                             </p>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[600px] border-collapse text-sm">
+                                <table className="w-full min-w-150 border-collapse text-sm">
                                     <thead>
                                         <tr className="border-b bg-gray-100 text-left text-gray-600">
                                             <th className="p-3">Employee</th>

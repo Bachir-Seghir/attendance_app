@@ -99,13 +99,18 @@ async function checkAttendanceWriteAccess(
 
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
-    select: { departmentId: true },
+    select: {
+    departmentId: true,
+    isActive: true,
+},
   });
 
   if (!employee) {
     return "Employee not found.";
   }
-
+if (!employee.isActive) {
+    return "Cannot modify attendance for an inactive employee.";
+}
   if (employee.departmentId !== user.departmentId) {
     return "You can only modify attendance for your assigned department.";
   }
@@ -380,51 +385,85 @@ app.post("/api/employees",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Ro
 });
 
 app.get("/api/employees", authenticateToken, async (req, res) => {
-  try {
-    const user = getAuthenticatedUser(req);
+    try {
+        const user = getAuthenticatedUser(req);
 
-    if (
-      user.role === Role.ATTENDANCE_OFFICER &&
-      user.departmentId === null
-    ) {
-      res.status(403).json({
-        status: "error",
-        message: "Your account has no assigned department.",
-      });
-      return;
+        if (
+            user.role === Role.ATTENDANCE_OFFICER &&
+            user.departmentId === null
+        ) {
+            res.status(403).json({
+                status: "error",
+                message: "Your account has no assigned department.",
+            });
+            return;
+        }
+
+        const month = Number(req.query.month);
+        const year = Number(req.query.year);
+
+        const hasMonthFilter =
+            Number.isInteger(month) &&
+            month >= 1 &&
+            month <= 12 &&
+            Number.isInteger(year) &&
+            year >= 2000 &&
+            year <= 9999;
+
+        const includeInactive = req.query.includeInactive === "true";
+
+        const where: any = {
+            ...(user.role === Role.ATTENDANCE_OFFICER
+                ? { departmentId: user.departmentId! }
+                : {}),
+        };
+
+        if (includeInactive) {
+            // Management screen: return active and inactive employees.
+        } else if (hasMonthFilter) {
+            const startDate = new Date(Date.UTC(year, month - 1, 1));
+            const endDate = new Date(Date.UTC(year, month, 1));
+
+            where.OR = [
+                { isActive: true },
+                {
+                    isActive: false,
+                    attendance: {
+                        some: {
+                            date: {
+                                gte: startDate,
+                                lt: endDate,
+                            },
+                        },
+                    },
+                },
+            ];
+        } else {
+            where.isActive = true;
+        }
+
+        const employees = await prisma.employee.findMany({
+            where,
+            include: {
+                department: true,
+            },
+            orderBy: {
+                name: "asc",
+            },
+        });
+
+        res.json({
+            status: "success",
+            data: employees,
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            status: "error",
+            message: "Failed to retrieve employees",
+        });
     }
-
-    const includeInactive =
-      req.query.includeInactive === "true" &&
-      (user.role === Role.SUPER_ADMIN || user.role === Role.MANAGER);
-
-    const employees = await prisma.employee.findMany({
-      where: {
-        isActive: includeInactive ? undefined : true,
-        ...(user.role === Role.ATTENDANCE_OFFICER
-          ? { departmentId: user.departmentId! }
-          : {}),
-      },
-      include: {
-        department: true,
-      },
-      orderBy: {
-        name: "asc",
-      },
-    });
-
-    res.json({
-      status: "success",
-      data: employees,
-    });
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      status: "error",
-      message: "Failed to retrieve employees",
-    });
-  }
 });
 
 app.patch(

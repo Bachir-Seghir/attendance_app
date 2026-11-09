@@ -104,16 +104,27 @@ export interface Employee {
 }
 
 export async function getEmployees(
-    includeInactive = false
+    includeInactive = false,
+    month?: number,
+    year?: number
 ): Promise<Employee[]> {
-    const endpoint = includeInactive
-        ? "/employees?includeInactive=true"
-        : "/employees";
+    const params = new URLSearchParams();
+
+    if (includeInactive) {
+        params.set("includeInactive", "true");
+    }
+
+    if (month !== undefined && year !== undefined) {
+        params.set("month", String(month));
+        params.set("year", String(year));
+    }
+
+    const query = params.toString();
 
     const response = await apiRequest<{
         status: string;
         data: Employee[];
-    }>(endpoint);
+    }>(`/employees${query ? `?${query}` : ""}`);
 
     return response.data;
 }

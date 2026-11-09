@@ -108,7 +108,7 @@ export default function ManageDepartments({
                     setError("");
                     setSuccess("");
                 }}
-                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700  font-semibold hover:bg-slate-200 hover:cursor-pointer"
             >
                 Gérer Les Structures
             </button>
