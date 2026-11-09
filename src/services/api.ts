@@ -99,19 +99,23 @@ export interface Employee {
   id: number;
   name: string;
   departmentId: number;
-  department: {
-    id: number;
-    name: string;
-  };
+  isActive: boolean;
+  department: Department;
 }
 
-export async function getEmployees(): Promise<Employee[]> {
-  const response = await apiRequest<{
-    status: string;
-    data: Employee[];
-  }>("/employees");
+export async function getEmployees(
+    includeInactive = false
+): Promise<Employee[]> {
+    const endpoint = includeInactive
+        ? "/employees?includeInactive=true"
+        : "/employees";
 
-  return response.data;
+    const response = await apiRequest<{
+        status: string;
+        data: Employee[];
+    }>(endpoint);
+
+    return response.data;
 }
 
 // ATTENDANCE
@@ -175,4 +179,19 @@ export async function saveAttendanceBatch(
     method: "POST",
     body: JSON.stringify({ changes }),
   });
+}
+
+
+export interface Department {
+    id: number;
+    name: string;
+}
+
+export async function getDepartments(): Promise<Department[]> {
+    const response = await apiRequest<{
+        status: string;
+        data: Department[];
+    }>("/departments");
+
+    return response.data;
 }

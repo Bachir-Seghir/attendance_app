@@ -2,20 +2,26 @@ import { useState, useEffect } from "react";
 import AppHeader from "./components/AppHeader";
 import AttendanceToolbar from "./components/AttendanceToolbar";
 import AttendanceTable from "./components/AttendanceTable";
-import { getEmployees, getAttendance, saveAttendanceBatch , type Employee } from "./services/api";
+import { getDepartments,getEmployees, getAttendance, saveAttendanceBatch , type Employee, type AuthUser , type Department } from "./services/api";
 import { useAuth } from "./context/AuthContext";
 import LoginPage from "./components/LoginPage";
 import { getUserPermissions } from "./utils/permissions";
+import AddDepartment from "./components/AddDepartment";
+import ManageDepartments from "./components/ManageDepartments";
+import ManageEmployees from "./components/ManageEmployees";
 
 interface AttendanceAppProps {
   canEditAttendance: boolean;
   canViewAllDepartments: boolean;
+  user: AuthUser;
 }
 
 function AttendanceApp({
   canEditAttendance,
   canViewAllDepartments,
+  user
 }: AttendanceAppProps) {
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [month, setMonth] = useState(11);
   const [year, setYear] = useState(2026);
   const [department, setDepartment] = useState("all");
@@ -31,23 +37,41 @@ const [isSaving, setIsSaving] = useState(false);
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
   const [attendanceError, setAttendanceError] = useState("");
   
+  const loadDepartments = async () => {
+    const data = await getDepartments();
+
+    console.log("Fetched departments:", data);
+    console.log("Departments count:", data.length);
+
+    setDepartments(data);
+};
   useEffect(() => {
-  getEmployees()
-    .then((data) => {
-      setEmployees(data);
-      setEmployeesError("");
-    })
-    .catch((error) => {
-      console.error("Failed to load employees:", error);
-      setEmployeesError(
-        error instanceof Error
-          ? error.message
-          : "Failed to load employees."
-      );
-    })
-    .finally(() => {
-      setIsLoadingEmployees(false);
-    });
+    loadDepartments().catch(console.error);
+  }, []);
+  
+  const loadEmployees = async () => {
+    setIsLoadingEmployees(true);
+
+    try {
+        const data = await getEmployees();
+
+        setEmployees(data);
+        setEmployeesError("");
+    } catch (error) {
+        console.error("Failed to load employees:", error);
+
+        setEmployeesError(
+            error instanceof Error
+                ? error.message
+                : "Failed to load employees."
+        );
+    } finally {
+        setIsLoadingEmployees(false);
+    }
+};
+
+useEffect(() => {
+    loadEmployees();
 }, []);
   
   useEffect(() => {
@@ -191,8 +215,26 @@ const [isSaving, setIsSaving] = useState(false);
   return (
     <div className="min-h-screen bg-slate-50">
       <AppHeader />
-
       <main className="p-6 space-y-6">
+        <div className="flex flex-wrap items-center gap-3">
+    {user.role === "SUPER_ADMIN" && (
+        <AddDepartment onDepartmentAdded={loadDepartments} />
+    )}
+
+    {(user.role === "SUPER_ADMIN" || user.role === "MANAGER") && (
+        <ManageDepartments
+            departments={departments}
+            onDepartmentsChanged={loadDepartments}
+        />
+    )}
+
+    {(user.role === "SUPER_ADMIN" || user.role === "MANAGER") && (
+        <ManageEmployees
+            departments={departments}
+            onEmployeesChanged={loadEmployees}
+        />
+    )}
+</div>
         <AttendanceToolbar
           month={month}
           year={year}
@@ -202,6 +244,7 @@ const [isSaving, setIsSaving] = useState(false);
 onYearChange={handleYearChange}
           onDepartmentChange={handleDepartmentChange}
           canSelectDepartment={canViewAllDepartments}
+          departments={departments}
         />
 
         <AttendanceTable
@@ -253,7 +296,7 @@ export default function App() {
             {user.role}
           </span>
         </div>
-
+    
         <button
           onClick={logout}
           className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100"
@@ -265,6 +308,7 @@ export default function App() {
       <AttendanceApp
         canEditAttendance={permissions.canEditAttendance}
         canViewAllDepartments={permissions.canViewAllDepartments}
+        user={user}
       />
     </>
   );

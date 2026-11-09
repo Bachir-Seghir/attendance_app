@@ -1,11 +1,13 @@
 import { useEmployeeCount } from "../hooks/useEmployeeCount";
 import { useAttendanceSummary } from "../hooks/useAttendanceSummary";
+import type { Department } from "../services/api";
 
 interface AttendanceToolbarProps {
   month: number;
   year: number;
   department: string;
   canSelectDepartment: boolean;
+  departments: Department[];
   attendance: Record<string, string>;
   onMonthChange: (month: number) => void;
   onYearChange: (year: number) => void;
@@ -21,6 +23,7 @@ function AttendanceToolbar({
   onYearChange,
   onDepartmentChange,
   canSelectDepartment,
+  departments,
 }: AttendanceToolbarProps) {
   const totalEmployees = useEmployeeCount(department);
 
@@ -61,39 +64,46 @@ function AttendanceToolbar({
         </label>
 
         <select
-          id="year"
-          value={year}
-          onChange={(event) => onYearChange(Number(event.target.value))}
-          className="border border-gray-300 rounded-lg px-3 py-2 min-w-28 outline-none focus:ring-2 focus:ring-emerald-600"
-        >
-          {[2025, 2026, 2027, 2028].map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
+    id="year"
+    value={year}
+    onChange={(event) => onYearChange(Number(event.target.value))}
+    className="border border-gray-300 rounded-lg px-3 py-2 min-w-28 outline-none focus:ring-2 focus:ring-emerald-600"
+>
+    {Array.from(
+        { length: 100 },
+        (_, index) => new Date().getFullYear() + index
+    ).map((item) => (
+        <option key={item} value={item}>
+            {item}
+        </option>
+    ))}
+</select>
       </div>
 
         {canSelectDepartment && (
-  <div className="flex flex-col gap-2">
     <div className="flex flex-col gap-2">
-        <label htmlFor="department" className="text-sm font-medium text-gray-600">
-          Department
+        <label
+            htmlFor="department"
+            className="text-sm font-medium text-gray-600"
+        >
+            Department
         </label>
 
         <select
-          id="department"
-          value={department}
-          onChange={(event) => onDepartmentChange(event.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 min-w-44 outline-none focus:ring-2 focus:ring-emerald-600"
+            id="department"
+            value={department}
+            onChange={(event) => onDepartmentChange(event.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 min-w-44 outline-none focus:ring-2 focus:ring-emerald-600"
         >
-          <option value="all">All departments</option>
-          <option value="Maintenance">Maintenance</option>
-          <option value="Production">Production</option>
-          <option value="Administration">Administration</option>
+            <option value="all">All departments</option>
+
+            {departments?.map((item) => (
+                <option key={item.id} value={item.name}>
+                    {item.name}
+                </option>
+            ))}
         </select>
-      </div>
-  </div>
+    </div>
 )}
       
 <div className="flex flex-wrap ml-auto items-center gap-3">
