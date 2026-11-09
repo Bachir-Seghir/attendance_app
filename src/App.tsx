@@ -3,8 +3,19 @@ import AppHeader from "./components/AppHeader";
 import AttendanceToolbar from "./components/AttendanceToolbar";
 import AttendanceTable from "./components/AttendanceTable";
 import { getEmployees, getAttendance, saveAttendanceBatch , type Employee } from "./services/api";
+import { useAuth } from "./context/AuthContext";
+import LoginPage from "./components/LoginPage";
+import { getUserPermissions } from "./utils/permissions";
 
-function App() {
+interface AttendanceAppProps {
+  canEditAttendance: boolean;
+  canViewAllDepartments: boolean;
+}
+
+function AttendanceApp({
+  canEditAttendance,
+  canViewAllDepartments,
+}: AttendanceAppProps) {
   const [month, setMonth] = useState(11);
   const [year, setYear] = useState(2026);
   const [department, setDepartment] = useState("all");
@@ -75,6 +86,7 @@ const [isSaving, setIsSaving] = useState(false);
   day: number,
   value: string
   ) => {
+    if (!canEditAttendance) return;
     setSaveMessage("");
   const key = `${employeeId}-${day}`;
 
@@ -90,6 +102,7 @@ const [isSaving, setIsSaving] = useState(false);
 };
   
   const handleSaveAttendance = async () => {
+    if (!canEditAttendance) return;
     const changesToSave = { ...pendingChanges };
   const changes = Object.entries(changesToSave).map(([key, value]) => {
     const [employeeId, day] = key.split("-").map(Number);
@@ -187,7 +200,8 @@ const [isSaving, setIsSaving] = useState(false);
           attendance={attendance}
           onMonthChange={handleMonthChange}
 onYearChange={handleYearChange}
-onDepartmentChange={handleDepartmentChange}
+          onDepartmentChange={handleDepartmentChange}
+          canSelectDepartment={canViewAllDepartments}
         />
 
         <AttendanceTable
@@ -204,11 +218,54 @@ onDepartmentChange={handleDepartmentChange}
           isLoadingEmployees={isLoadingEmployees}
           employeesError={employeesError}
           isLoadingAttendance={isLoadingAttendance}
-attendanceError={attendanceError}
+          attendanceError={attendanceError}
+          canEditAttendance={canEditAttendance}
         />
       </main>
     </div>
   );
 }
 
-export default App;
+
+export default function App() {
+  const { user, isLoading, logout } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  const permissions = getUserPermissions(user);
+
+  return (
+    <>
+      <div className="flex items-center justify-between border-b bg-white px-6 py-3">
+        <div>
+          <span className="font-semibold">{user.name}</span>
+          <span className="ml-3 text-sm text-slate-500">
+            {user.role}
+          </span>
+        </div>
+
+        <button
+          onClick={logout}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100"
+        >
+          Logout
+        </button>
+      </div>
+
+      <AttendanceApp
+        canEditAttendance={permissions.canEditAttendance}
+        canViewAllDepartments={permissions.canViewAllDepartments}
+      />
+    </>
+  );
+}

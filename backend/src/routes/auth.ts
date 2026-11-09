@@ -2,6 +2,10 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
+import {
+  authenticateToken,
+  type AuthenticatedRequest,
+} from "../middleware/auth.js";
 
 const router = Router();
 
@@ -65,6 +69,41 @@ router.post("/login", async (req, res) => {
     res.status(500).json({
       status: "error",
       message: "Login failed.",
+    });
+  }
+});
+
+router.get("/me", authenticateToken, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        departmentId: true,
+      },
+    });
+
+    if (!user) {
+      res.status(401).json({
+        status: "error",
+        message: "User not found.",
+      });
+      return;
+    }
+
+    res.json({
+      status: "success",
+      user,
+    });
+  } catch (error) {
+    console.error("Get current user error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Unable to retrieve user.",
     });
   }
 });

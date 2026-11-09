@@ -5,6 +5,7 @@ interface AttendanceToolbarProps {
   month: number;
   year: number;
   department: string;
+  canSelectDepartment: boolean;
   attendance: Record<string, string>;
   onMonthChange: (month: number) => void;
   onYearChange: (year: number) => void;
@@ -19,6 +20,7 @@ function AttendanceToolbar({
   onMonthChange,
   onYearChange,
   onDepartmentChange,
+  canSelectDepartment,
 }: AttendanceToolbarProps) {
   const totalEmployees = useEmployeeCount(department);
 
@@ -72,7 +74,9 @@ function AttendanceToolbar({
         </select>
       </div>
 
-      <div className="flex flex-col gap-2">
+        {canSelectDepartment && (
+  <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
         <label htmlFor="department" className="text-sm font-medium text-gray-600">
           Department
         </label>
@@ -89,6 +93,9 @@ function AttendanceToolbar({
           <option value="Administration">Administration</option>
         </select>
       </div>
+  </div>
+)}
+      
 <div className="flex flex-wrap ml-auto items-center gap-3">
 
   {/* Normal hours */}

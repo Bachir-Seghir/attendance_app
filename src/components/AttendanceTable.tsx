@@ -19,7 +19,8 @@ interface AttendanceTableProps {
 	isLoadingEmployees: boolean;
 	employeesError: string;
 	isLoadingAttendance: boolean;
-attendanceError: string;
+	attendanceError: string;
+	canEditAttendance: boolean;
 	onAttendanceChange: (employeeId: number, day: number, value: string) => void;
 	onSaveAttendance: () => void;
 }
@@ -38,7 +39,8 @@ function AttendanceTable({
 	isLoadingEmployees,
 	employeesError,
 	isLoadingAttendance,
-  attendanceError,
+	attendanceError,
+  canEditAttendance,
 }: AttendanceTableProps) {
 	// Calculate the number of days in the selected month
 	const daysInMonth = new Date(year, month, 0).getDate();
@@ -70,6 +72,7 @@ function AttendanceTable({
 		day: number,
 		value: string,
 	) => {
+		if (!canEditAttendance) return;
 		const validatedValue = validateAttendanceInput(value);
 
 		// Reject invalid characters or values
@@ -79,6 +82,7 @@ function AttendanceTable({
 	};
 
 	const handleAttendanceBlur = (employeeId: number, day: number) => {
+		if (!canEditAttendance) return;
 		const key = `${employeeId}-${day}`;
 		const value = attendance[key] ?? "";
 
@@ -151,17 +155,17 @@ function AttendanceTable({
 					<h2 className="text-lg font-semibold text-gray-800">
 						Monthly Attendance
 					</h2>
-
-					<button
-						type="button"
-						onClick={onSaveAttendance}
-						disabled={isSaving || !hasUnsavedChanges}
-						className={`px-4 py-2  hover:cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors ${
-							hasUnsavedChanges && !isSaving ? "save-reminder" : ""
-						}`}
-					>
-						{isSaving ? "Sauvgarde En Cours..." : "Sauvgarder l'état Actuel"}
-					</button>
+					{canEditAttendance && (
+						<button
+							type="button"
+							onClick={onSaveAttendance}
+							disabled={isSaving || !hasUnsavedChanges}
+							className={`px-4 py-2  hover:cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors ${hasUnsavedChanges && !isSaving ? "save-reminder" : ""
+								}`}
+						>
+							{isSaving ? "Sauvgarde En Cours..." : "Sauvgarder l'état Actuel"}
+						</button>
+					)}
 				</div>
 				{saveMessage && (
 					<p
@@ -318,6 +322,7 @@ function AttendanceTable({
 														}`}
 													>
 														<input
+															readOnly={!canEditAttendance}
 															onFocus={(event) => event.target.select()}
 															ref={(element) => {
 																inputRefs.current[key] = element;
@@ -343,7 +348,7 @@ function AttendanceTable({
 																weekend
 																	? "bg-red-300 text-red-950"
 																	: "bg-gray-100 text-gray-900"
-															}`}
+															} ${!canEditAttendance ? "cursor-default" : ""}`}
 														/>
 													</td>
 												);

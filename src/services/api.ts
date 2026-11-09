@@ -1,20 +1,46 @@
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+
+const TOKEN_KEY = "attendance_token";
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearAuthToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
 
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   try {
+    const headers = new Headers(options.headers);
+    const token = getAuthToken();
+
+    headers.set("Content-Type", "application/json");
+
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
     const response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
+      headers,
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
+
+      if (response.status === 401) {
+        clearAuthToken();
+        window.dispatchEvent(new Event("auth:unauthorized"));
+      }
 
       throw new Error(
         errorData?.message || `API Error: ${response.status}`
@@ -32,6 +58,42 @@ export async function apiRequest<T>(
     throw error;
   }
 }
+
+// AUTHENTICATION
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+  role: "SUPER_ADMIN" | "MANAGER" | "ATTENDANCE_OFFICER" | "VISITOR";
+  departmentId: number | null;
+}
+
+interface LoginResponse {
+  status: string;
+  token: string;
+  user: AuthUser;
+}
+
+export async function login(
+  email: string,
+  password: string
+): Promise<AuthUser> {
+  const response = await apiRequest<LoginResponse>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+
+  setAuthToken(response.token);
+
+  return response.user;
+}
+
+export function logout(): void {
+  clearAuthToken();
+}
+
+// EMPLOYEES
 
 export interface Employee {
   id: number;
@@ -51,6 +113,8 @@ export async function getEmployees(): Promise<Employee[]> {
 
   return response.data;
 }
+
+// ATTENDANCE
 
 export interface AttendanceRecord {
   id: number;
