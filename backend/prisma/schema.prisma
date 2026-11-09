@@ -1,3 +1,9 @@
+enum Role {
+  SUPER_ADMIN
+  MANAGER
+  ATTENDANCE_OFFICER
+  VISITOR
+}
 
 generator client {
   provider = "prisma-client-js"
@@ -21,21 +27,20 @@ model User {
   name         String
   email        String      @unique
   password     String
-  role         String      @default("USER")
+  role         Role        @default(VISITOR)
   departmentId Int?
   department   Department? @relation(fields: [departmentId], references: [id])
   createdAt    DateTime    @default(now())
 }
 
 model Employee {
-  id           Int        @id @default(autoincrement())
+  id           Int          @id @default(autoincrement())
   name         String
   departmentId Int
-  attendance Attendance[]
-  department   Department @relation(fields: [departmentId], references: [id])
-  createdAt    DateTime   @default(now())
+  attendance   Attendance[]
+  department   Department   @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime     @default(now())
 }
-
 
 model Attendance {
   id         Int      @id @default(autoincrement())
@@ -45,7 +50,7 @@ model Attendance {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee   Employee @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
 
   @@unique([employeeId, date])
   @@index([date])

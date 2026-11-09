@@ -2,6 +2,14 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import prisma from "./lib/prisma.js";
+import authRoutes from "./routes/auth.js";
+import { Role } from "@prisma/client";
+import type { Request } from "express";
+import {
+  authenticateToken,
+  authorizeRoles,
+  type AuthenticatedRequest,
+} from "./middleware/auth.js";
 
 const ATTENDANCE_CODES = [
   "R",
@@ -31,6 +39,82 @@ function isValidAttendanceValue(value: string): boolean {
   );
 }
 
+const ATTENDANCE_EDIT_DEADLINE_DAYS = 4;
+
+function getAuthenticatedUser(req: Request) {
+  return (req as AuthenticatedRequest).user!;
+}
+
+function parseAttendanceDate(value: unknown): Date | null {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== value
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function getAttendanceDeadline(date: Date): Date {
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth() + 1,
+      ATTENDANCE_EDIT_DEADLINE_DAYS,
+      22, 59, 59, 999
+    )
+  );
+}
+
+async function checkAttendanceWriteAccess(
+  req: Request,
+  employeeId: number,
+  date: Date
+): Promise<string | null> {
+  const user = getAuthenticatedUser(req);
+
+  if (user.role === Role.SUPER_ADMIN) {
+    return null;
+  }
+
+  if (user.role !== Role.ATTENDANCE_OFFICER) {
+    return "You cannot modify attendance.";
+  }
+
+  if (user.departmentId === null) {
+    return "Your account has no assigned department.";
+  }
+
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { departmentId: true },
+  });
+
+  if (!employee) {
+    return "Employee not found.";
+  }
+
+  if (employee.departmentId !== user.departmentId) {
+    return "You can only modify attendance for your assigned department.";
+  }
+
+  if (new Date() > getAttendanceDeadline(date)) {
+    return "The attendance editing deadline has passed.";
+  }
+
+  return null;
+}
+
 dotenv.config();
 
 const app = express();
@@ -41,6 +125,8 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+app.use("/api/auth", authRoutes);
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
@@ -68,7 +154,7 @@ app.get("/api/db-check", async (req, res) => {
   }
 });
 
-app.get("/api/departments", async (req, res) => {
+app.get("/api/departments",authenticateToken, async (req, res) => {
   try {
     const departments = await prisma.department.findMany({
       orderBy: {
@@ -90,7 +176,7 @@ app.get("/api/departments", async (req, res) => {
   }
 });
 
-app.post("/api/departments", async (req, res) => {
+app.post("/api/departments",authenticateToken, authorizeRoles(Role.SUPER_ADMIN), async (req, res) => {
   try {
     const { name } = req.body;
 
@@ -123,7 +209,7 @@ app.post("/api/departments", async (req, res) => {
 });
 
 
-app.post("/api/employees", async (req, res) => {
+app.post("/api/employees",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Role.MANAGER), async (req, res) => {
   try {
     const { name, departmentId } = req.body;
 
@@ -181,16 +267,33 @@ app.post("/api/employees", async (req, res) => {
   }
 });
 
-app.get("/api/employees", async (req, res) => {
+app.get("/api/employees",authenticateToken, async (req, res) => {
   try {
-    const employees = await prisma.employee.findMany({
-      include: {
-        department: true,
-      },
-      orderBy: {
-        name: "asc",
-      },
-    });
+    const user = getAuthenticatedUser(req);
+
+if (
+  user.role === Role.ATTENDANCE_OFFICER &&
+  user.departmentId === null
+) {
+  res.status(403).json({
+    status: "error",
+    message: "Your account has no assigned department.",
+  });
+  return;
+}
+
+const employees = await prisma.employee.findMany({
+  where:
+    user.role === Role.ATTENDANCE_OFFICER
+      ? { departmentId: user.departmentId! }
+      : {},
+  include: {
+    department: true,
+  },
+  orderBy: {
+    name: "asc",
+  },
+});
 
     res.json({
       status: "success",
@@ -206,7 +309,7 @@ app.get("/api/employees", async (req, res) => {
   }
 });
 
-app.post("/api/attendance", async (req, res) => {
+app.post("/api/attendance",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER), async (req, res) => {
   try {
     const { employeeId, date, value } = req.body;
 
@@ -231,7 +334,40 @@ app.post("/api/attendance", async (req, res) => {
       });
       return;
     }
+const parsedDate = parseAttendanceDate(date);
 
+if (!parsedDate) {
+  res.status(400).json({
+    status: "error",
+    message: "A valid date is required (YYYY-MM-DD).",
+  });
+  return;
+}
+
+if (
+  typeof value !== "string" ||
+  !isValidAttendanceValue(value)
+) {
+  res.status(400).json({
+    status: "error",
+    message: "Invalid attendance value.",
+  });
+  return;
+}
+
+const permissionError = await checkAttendanceWriteAccess(
+  req,
+  parsedEmployeeId,
+  parsedDate
+);
+
+if (permissionError) {
+  res.status(403).json({
+    status: "error",
+    message: permissionError,
+  });
+  return;
+}
     if (typeof value !== "string" || !value.trim()) {
       res.status(400).json({
         status: "error",
@@ -271,7 +407,7 @@ app.post("/api/attendance", async (req, res) => {
   }
 });
 
-app.get("/api/attendance", async (req, res) => {
+app.get("/api/attendance",authenticateToken, async (req, res) => {
   try {
     const month = Number(req.query.month);
     const year = Number(req.query.year);
@@ -293,20 +429,40 @@ app.get("/api/attendance", async (req, res) => {
     const startDate = new Date(Date.UTC(year, month - 1, 1));
     const endDate = new Date(Date.UTC(year, month, 1));
 
-    const attendance = await prisma.attendance.findMany({
-      where: {
-        date: {
-          gte: startDate,
-          lt: endDate,
-        },
-      },
-      include: {
-        employee: true,
-      },
-      orderBy: {
-        date: "asc",
-      },
-    });
+    const user = getAuthenticatedUser(req);
+
+if (
+  user.role === Role.ATTENDANCE_OFFICER &&
+  user.departmentId === null
+) {
+  res.status(403).json({
+    status: "error",
+    message: "Your account has no assigned department.",
+  });
+  return;
+}
+
+const attendance = await prisma.attendance.findMany({
+  where: {
+    date: {
+      gte: startDate,
+      lt: endDate,
+    },
+    ...(user.role === Role.ATTENDANCE_OFFICER
+      ? {
+          employee: {
+            departmentId: user.departmentId!,
+          },
+        }
+      : {}),
+  },
+  include: {
+    employee: true,
+  },
+  orderBy: {
+    date: "asc",
+  },
+});
 
     res.json({
       status: "success",
@@ -322,7 +478,7 @@ app.get("/api/attendance", async (req, res) => {
   }
 });
 
-app.delete("/api/attendance", async (req, res) => {
+app.delete("/api/attendance",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER), async (req, res) => {
   try {
     const employeeId = Number(req.query.employeeId);
     const date = req.query.date;
@@ -339,7 +495,29 @@ app.delete("/api/attendance", async (req, res) => {
       });
       return;
     }
+const parsedDate = parseAttendanceDate(date);
 
+if (!parsedDate) {
+  res.status(400).json({
+    status: "error",
+    message: "Invalid attendance date.",
+  });
+  return;
+}
+
+const permissionError = await checkAttendanceWriteAccess(
+  req,
+  employeeId,
+  parsedDate
+);
+
+if (permissionError) {
+  res.status(403).json({
+    status: "error",
+    message: permissionError,
+  });
+  return;
+}
     const attendance = await prisma.attendance.deleteMany({
       where: {
         employeeId,
@@ -362,7 +540,7 @@ app.delete("/api/attendance", async (req, res) => {
   }
 });
 
-app.post("/api/attendance/batch", async (req, res) => {
+app.post("/api/attendance/batch",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER), async (req, res) => {
   try {
     const { changes } = req.body;
 
@@ -381,6 +559,49 @@ app.post("/api/attendance/batch", async (req, res) => {
   });
   return;
     }
+    const user = getAuthenticatedUser(req);
+
+for (const change of changes) {
+  if (!change || typeof change !== "object") {
+    res.status(400).json({
+      status: "error",
+      message: "Invalid attendance data.",
+    });
+    return;
+  }
+
+  const employeeId = Number(change.employeeId);
+  const date = parseAttendanceDate(change.date);
+
+  if (
+    !Number.isInteger(employeeId) ||
+    employeeId <= 0 ||
+    !date ||
+    typeof change.value !== "string" ||
+    (change.value.trim() !== "" &&
+      !isValidAttendanceValue(change.value))
+  ) {
+    res.status(400).json({
+      status: "error",
+      message: "Invalid attendance data.",
+    });
+    return;
+  }
+
+  const permissionError = await checkAttendanceWriteAccess(
+    req,
+    employeeId,
+    date
+  );
+
+  if (permissionError) {
+    res.status(403).json({
+      status: "error",
+      message: permissionError,
+    });
+    return;
+  }
+}
     
     const operations = changes.map((change) => {
       const { employeeId, date, value } = change;
