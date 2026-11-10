@@ -200,7 +200,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
             {/* Main button */}
             <button
                 onClick={openManagement}
-                className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900"
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-900  text-white rounded-lg hover:cursor-pointer"
             >
                 Manage Users
             </button>

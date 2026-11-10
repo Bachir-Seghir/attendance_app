@@ -194,7 +194,7 @@ export default function ManageEmployees({
                     setSuccess("");
                     resetForm();
                 }}
-                className="rounded-lg bg-emerald-700 px-4 py-2 text-white hover:bg-emerald-800 hover:cursor-pointer"
+                className="rounded-lg  px-4 py-2 text-white bg-orange-500 hover:bg-orange-600 hover:cursor-pointer"
             >
                 Manage Employees
             </button>

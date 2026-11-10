@@ -68,7 +68,7 @@ export default function AddDepartment({
                     setError("");
                     setSuccess("");
                 }}
-                className="ml-auto px-4 py-2 bg-emerald-700 hover:cursor-pointer hover:bg-emerald-900 text-white rounded-lg transition-colors"
+                className="ml-auto px-4 py-2 hover:cursor-pointer bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
             >
                 + Ajouter une Structure
             </button>

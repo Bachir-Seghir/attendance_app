@@ -10,11 +10,14 @@ import AddDepartment from "./components/AddDepartment";
 import ManageDepartments from "./components/ManageDepartments";
 import ManageEmployees from "./components/ManageEmployees";
 import ManageUsers from "./components/ManageUsers";
+import excelIcon from "./assets/excel.svg";
+import { exportAttendanceExcel } from "./utils/exportAttendanceExcel";
 
 interface AttendanceAppProps {
   canEditAttendance: boolean;
   canViewAllDepartments: boolean;
   user: AuthUser;
+  canExportAttendance: boolean;
 }
 
 function AttendanceApp({
@@ -71,6 +74,27 @@ const [isSaving, setIsSaving] = useState(false);
     }
 };
 
+  const handleExportExcel = async () => {
+  try {
+    await exportAttendanceExcel({
+      employees,
+      attendance,
+      year,
+      month,
+      department:
+        user.role === "SUPER_ADMIN" || user.role === "MANAGER"
+          ? department
+          : "all",
+    });
+  } catch (error) {
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Failed to export attendance."
+    );
+  }
+  };
+  
 useEffect(() => {
     loadEmployees();
 }, [month, year]);
@@ -238,7 +262,20 @@ useEffect(() => {
             departments={departments}
             onEmployeesChanged={loadEmployees}
         />
-    )}
+          )}
+          <button
+  type="button"
+  onClick={handleExportExcel}
+  disabled={employees.length === 0}
+  className="inline-flex items-center gap-2 rounded-lg hover:cursor-pointer hover:bg-orange-300 px-4 py-2 text-md font-medium text-black shadow-sm  disabled:cursor-not-allowed disabled:opacity-50"
+>
+  <img
+    src={excelIcon}
+    alt=""
+    className="h-8 w-8"
+  />
+  Exporter Excel
+</button>
 </div>
         <AttendanceToolbar
           month={month}
@@ -250,6 +287,8 @@ onYearChange={handleYearChange}
           onDepartmentChange={handleDepartmentChange}
           canSelectDepartment={canViewAllDepartments}
           departments={departments}
+          employees={employees}
+
         />
 
         <AttendanceTable
@@ -314,6 +353,7 @@ export default function App() {
         canEditAttendance={permissions.canEditAttendance}
         canViewAllDepartments={permissions.canViewAllDepartments}
         user={user}
+        canExportAttendance={permissions.canExportAttendance}
       />
     </>
   );
