@@ -18,12 +18,14 @@ interface AttendanceAppProps {
   canViewAllDepartments: boolean;
   user: AuthUser;
   canExportAttendance: boolean;
+  onLogout: () => void;
 }
 
 function AttendanceApp({
   canEditAttendance,
   canViewAllDepartments,
-  user
+  user,
+  onLogout,
 }: AttendanceAppProps) {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [month, setMonth] = useState(11);
@@ -239,7 +241,7 @@ useEffect(() => {
 };
   return (
     <div className="min-h-screen bg-slate-50">
-      <AppHeader />
+      <AppHeader user={user} onLogout={onLogout} />
       <main className="p-6 space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           {user.role === "SUPER_ADMIN" && (
@@ -332,29 +334,14 @@ export default function App() {
   const permissions = getUserPermissions(user);
 
   return (
-    <>
-      <div className="flex items-center justify-between border-b bg-white px-6 py-3">
-        <div>
-          <span className="font-semibold">{user.name}</span>
-          <span className="ml-3 text-sm text-slate-500">
-            {user.role}
-          </span>
-        </div>
-    
-        <button
-          onClick={logout}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100"
-        >
-          Logout
-        </button>
-      </div>
+     
 
       <AttendanceApp
         canEditAttendance={permissions.canEditAttendance}
         canViewAllDepartments={permissions.canViewAllDepartments}
         user={user}
         canExportAttendance={permissions.canExportAttendance}
+        onLogout={logout}
       />
-    </>
   );
 }
