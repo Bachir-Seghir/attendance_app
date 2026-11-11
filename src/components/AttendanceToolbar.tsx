@@ -21,7 +21,6 @@ function AttendanceToolbar({
   year,
   department,
   attendance,
-  employees,
   onMonthChange,
   onYearChange,
   onDepartmentChange,

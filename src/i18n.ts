@@ -8,8 +8,13 @@ const resources = {
       app: {
         title: "Plateforme de Pointage du Personnel SOMIK - CP1Z",
             logout: "Déconnexion",
-            developedBy: "Développée par"
-      },
+            developedBy: "Développée par",
+            
+          },
+          login: {
+              loginTitle: "Plateforme de Pointage SOMIK",
+              info: "Connecter pour acceder à votre compte"
+        },
       common: {
         save: "Enregistrer",
         cancel: "Annuler",
@@ -37,9 +42,10 @@ const resources = {
         departments: "Départements",
       },
       auth: {
-        email: "Adresse e-mail",
+        identifier: "Identifiant",
         password: "Mot de passe",
-        login: "Se connecter",
+          login: "Se connecter",
+        loginIn:"Connexion..."
       },
           roles: {
           SUPER_ADMIN: "Administrateur",
@@ -55,8 +61,13 @@ const resources = {
       app: {
         title: "Attendance Management System for SOMIK - CP1Z",
             logout: "Logout",
-        developedBy: "Developed By"
-      },
+            developedBy: "Developed By",
+        
+          },
+        login: {
+              loginTitle: "Attendance Management System SOMIK",
+              info: "Sign in to access your account"
+        },
       common: {
         save: "Save",
         cancel: "Cancel",
@@ -84,9 +95,10 @@ const resources = {
         departments: "Departments",
       },
       auth: {
-        email: "Email Address",
+        identifier: "Identifier",
         password: "Password",
-        login: "Login",
+          login: "Login",
+        loginIn:"Signing in..."
           },
       roles: {
           SUPER_ADMIN: "Administrator",

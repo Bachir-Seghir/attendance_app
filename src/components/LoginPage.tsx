@@ -1,10 +1,13 @@
 
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useTranslation } from "react-i18next";
+import LanguageSwitcher from "./LanguageSwitcher";
 
 export default function LoginPage() {
   const { login } = useAuth();
-
+  const { t } = useTranslation();
+  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -33,12 +36,13 @@ export default function LoginPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-md space-y-6 rounded-xl bg-white p-8 shadow-lg"
       >
+        <img src="/sonatrach.svg" alt="" className="w-30 h-30 mx-auto"/>
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-800">
-            Attendance Management
+            {t("app.loginTitle")}
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Sign in to access your account
+            {t("login.info")}
           </p>
         </div>
 
@@ -50,7 +54,7 @@ export default function LoginPage() {
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Email
+            {t("auth.identifier")}
           </label>
           <input
             type="email"
@@ -64,7 +68,7 @@ export default function LoginPage() {
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-700">
-            Password
+            {t("auth.password")}
           </label>
           <input
             type="password"
@@ -79,10 +83,14 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-lg bg-blue-600 p-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-lg bg-emerald-800 p-3 font-semibold text-white transition hover:bg-emerald-900 hover:cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isSubmitting ? "Signing in..." : "Sign in"}
+          {isSubmitting ? t("auth.loginIn") : t("auth.login") }
         </button>
+        <div className="flex justify-center">
+
+        <LanguageSwitcher bg="emerald-900" />
+        </div>
       </form>
     </div>
   );

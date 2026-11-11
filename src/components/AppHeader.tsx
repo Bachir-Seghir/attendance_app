@@ -43,7 +43,7 @@ function AppHeader({ user, onLogout }: AppHeaderProps) {
             </span>
           </div>
 
-          <LanguageSwitcher />
+          <LanguageSwitcher bg=""/>
 
           <button
             onClick={onLogout}
