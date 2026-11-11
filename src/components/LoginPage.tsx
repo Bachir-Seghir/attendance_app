@@ -39,7 +39,7 @@ export default function LoginPage() {
         <img src="/sonatrach.svg" alt="" className="w-30 h-30 mx-auto"/>
         <div className="text-center">
           <h1 className="text-2xl font-bold text-slate-800">
-            {t("app.loginTitle")}
+            {t("login.loginTitle")}
           </h1>
           <p className="mt-2 text-sm text-slate-500">
             {t("login.info")}

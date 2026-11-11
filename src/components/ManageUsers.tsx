@@ -1,5 +1,6 @@
 
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import {
     getUsers,
     createUser,
@@ -15,14 +16,9 @@ interface ManageUsersProps {
     departments: Department[];
 }
 
-const roleLabels: Record<UserRole, string> = {
-    SUPER_ADMIN: "Super Admin",
-    MANAGER: "Manager",
-    ATTENDANCE_OFFICER: "Attendance Officer",
-    VISITOR: "Visitor",
-};
-
 export default function ManageUsers({ departments }: ManageUsersProps) {
+    const { t } = useTranslation();
+
     const [users, setUsers] = useState<ManagedUser[]>([]);
 
     const [isManagementOpen, setIsManagementOpen] = useState(false);
@@ -54,13 +50,13 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
             const data = await getUsers();
             setUsers(data);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to load users.");
+            setError(err instanceof Error ? err.message : t("manageUsers.loadError"));
         } finally {
             setIsLoading(false);
         }
     }
 
-    // Load all existing users whenever the management modal opens.
+    //* Load all existing users whenever the management modal opens.
     useEffect(() => {
         if (isManagementOpen) {
             loadUsers();
@@ -104,7 +100,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
         setSuccess("");
 
         if (role === "ATTENDANCE_OFFICER" && !departmentId) {
-            setError("Please assign a department to this attendance officer.");
+            setError(t("manageUsers.assignDepartment"));
             return;
         }
 
@@ -123,20 +119,20 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
 
             if (editingId !== null) {
                 await updateUser(editingId, data);
-                setSuccess("User updated successfully.");
+                setSuccess(t("manageUsers.userUpdated"));
             } else {
                 await createUser({
                     ...data,
                     password,
                 });
-                setSuccess("User created successfully.");
+                setSuccess(t("manageUsers.userCreated"));
             }
 
             setIsFormOpen(false);
             resetForm();
             await loadUsers();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to save user.");
+            setError(err instanceof Error ? err.message : t("manageUsers.saveError"));
         } finally {
             setIsSaving(false);
         }
@@ -145,7 +141,12 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
     async function handleStatusChange(user: ManagedUser) {
         const action = user.isActive ? "deactivate" : "activate";
 
-        if (!window.confirm(`Are you sure you want to ${action} ${user.name}?`)) {
+        if (!window.confirm(
+            t("manageUsers.confirmStatusChange", {
+                action: t(`manageUsers.actionsLabels.${action}`),
+                name: user.name,
+            })
+        )) {
             return;
         }
 
@@ -154,10 +155,16 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
 
         try {
             await changeUserStatus(user.id, !user.isActive);
-            setSuccess(`User ${action}d successfully.`);
+
+            setSuccess(
+                user.isActive
+                    ? t("manageUsers.userDeactivated")
+                    : t("manageUsers.userActivated")
+            );
+
             await loadUsers();
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to update user.");
+            setError(err instanceof Error ? err.message : t("manageUsers.updateError"));
         }
     }
 
@@ -165,7 +172,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
         event.preventDefault();
 
         if (newPassword.length < 8) {
-            setError("Password must contain at least 8 characters.");
+            setError(t("manageUsers.passwordTooShort"));
             return;
         }
 
@@ -177,11 +184,11 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
 
         try {
             await resetUserPassword(passwordUserId, newPassword);
-            setSuccess("Password reset successfully.");
+            setSuccess(t("manageUsers.passwordResetSuccess"));
             setPasswordUserId(null);
             setNewPassword("");
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to reset password.");
+            setError(err instanceof Error ? err.message : t("manageUsers.resetPasswordError"));
         } finally {
             setIsSaving(false);
         }
@@ -202,7 +209,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                 onClick={openManagement}
                 className="px-4 py-2 bg-emerald-700 hover:bg-emerald-900  text-white rounded-lg hover:cursor-pointer"
             >
-                Manage Users
+                {t("manageUsers.button")}
             </button>
 
             {/* Main management modal */}
@@ -213,10 +220,10 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <h2 className="text-xl font-semibold text-gray-800">
-                                    User Management
+                                    {t("manageUsers.title")}
                                 </h2>
                                 <p className="text-sm text-gray-500">
-                                    Manage application accounts and permissions.
+                                    {t("manageUsers.description")}
                                 </p>
                             </div>
 
@@ -225,13 +232,13 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                     onClick={openCreateForm}
                                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                                 >
-                                    + Add User
+                                    + {t("manageUsers.addUser")}
                                 </button>
 
                                 <button
                                     onClick={() => setIsManagementOpen(false)}
                                     className="text-gray-500 hover:text-gray-800 text-2xl px-2"
-                                    title="Close"
+                                    title={t("manageUsers.close")}
                                 >
                                     ×
                                 </button>
@@ -253,7 +260,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                         <div className="flex flex-wrap gap-3">
                             <input
                                 type="text"
-                                placeholder="Search name or email..."
+                                placeholder={t("manageUsers.searchPlaceholder")}
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
                                 className="flex-1 min-w-48 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-400"
@@ -265,25 +272,25 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                     checked={showInactive}
                                     onChange={(event) => setShowInactive(event.target.checked)}
                                 />
-                                Show inactive users
+                                {t("manageUsers.showInactive")}
                             </label>
                         </div>
 
                         {isLoading ? (
                             <p className="text-center py-8 text-gray-500">
-                                Loading users...
+                                {t("manageUsers.loading")}
                             </p>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="bg-gray-50 text-left text-gray-600">
-                                            <th className="p-3">Name</th>
-                                            <th className="p-3">Email</th>
-                                            <th className="p-3">Role</th>
-                                            <th className="p-3">Department</th>
-                                            <th className="p-3">Status</th>
-                                            <th className="p-3 text-right">Actions</th>
+                                            <th className="p-3">{t("manageUsers.name")}</th>
+                                            <th className="p-3">{t("manageUsers.email")}</th>
+                                            <th className="p-3">{t("manageUsers.role")}</th>
+                                            <th className="p-3">{t("manageUsers.department")}</th>
+                                            <th className="p-3">{t("manageUsers.status")}</th>
+                                            <th className="p-3 text-right">{t("manageUsers.actions")}</th>
                                         </tr>
                                     </thead>
 
@@ -297,7 +304,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                                     {user.email}
                                                 </td>
                                                 <td className="p-3">
-                                                    {roleLabels[user.role]}
+                                                    {t(`common.roles.${user.role}`)}
                                                 </td>
                                                 <td className="p-3 text-gray-600">
                                                     {user.department?.name ?? "—"}
@@ -310,7 +317,9 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                                                 : "bg-gray-200 text-gray-600"
                                                         }`}
                                                     >
-                                                        {user.isActive ? "Active" : "Inactive"}
+                                                        {user.isActive
+                                                            ? t("manageUsers.active")
+                                                            : t("manageUsers.inactive")}
                                                     </span>
                                                 </td>
                                                 <td className="p-3">
@@ -319,7 +328,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                                             onClick={() => openEditForm(user)}
                                                             className="text-blue-600 hover:underline"
                                                         >
-                                                            Edit
+                                                            {t("manageUsers.edit")}
                                                         </button>
 
                                                         <button
@@ -328,9 +337,9 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                                                 setPasswordUserId(user.id);
                                                                 setNewPassword("");
                                                             }}
-                                                            className="text-indigo-600 hover:underline"
+                                                            className="text-emerald-900 hover:underline"
                                                         >
-                                                            Password
+                                                            {t("manageUsers.password")}
                                                         </button>
 
                                                         <button
@@ -341,7 +350,9 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                                                     : "text-green-600"
                                                             } hover:underline`}
                                                         >
-                                                            {user.isActive ? "Deactivate" : "Activate"}
+                                                            {user.isActive
+                                                                ? t("manageUsers.deactivate")
+                                                                : t("manageUsers.activate")}
                                                         </button>
                                                     </div>
                                                 </td>
@@ -352,8 +363,8 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                             <tr>
                                                 <td colSpan={6} className="text-center p-8 text-gray-500">
                                                     {users.length === 0
-                                                        ? "No users have been created yet."
-                                                        : "No users found."}
+                                                        ? t("manageUsers.noUsersCreated")
+                                                        : t("manageUsers.noUsersFound")}
                                                 </td>
                                             </tr>
                                         )}
@@ -374,7 +385,9 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                     >
                         <div className="flex justify-between items-center">
                             <h3 className="text-lg font-semibold">
-                                {editingId !== null ? "Edit User" : "Add User"}
+                                {editingId !== null
+                                    ? t("manageUsers.editUser")
+                                    : t("manageUsers.addUserTitle")}
                             </h3>
 
                             <button
@@ -387,7 +400,9 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                         </div>
 
                         <div>
-                            <label className="block text-sm mb-1">Full name</label>
+                            <label className="block text-sm mb-1">
+                                {t("manageUsers.fullName")}
+                            </label>
                             <input
                                 required
                                 maxLength={100}
@@ -398,7 +413,9 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                         </div>
 
                         <div>
-                            <label className="block text-sm mb-1">Email</label>
+                            <label className="block text-sm mb-1">
+                                {t("manageUsers.email")}
+                            </label>
                             <input
                                 required
                                 type="email"
@@ -411,7 +428,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                         {editingId === null && (
                             <div>
                                 <label className="block text-sm mb-1">
-                                    Initial password
+                                    {t("manageUsers.initialPassword")}
                                 </label>
                                 <input
                                     required
@@ -425,29 +442,43 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                         )}
 
                         <div>
-                            <label className="block text-sm mb-1">Role</label>
+                            <label className="block text-sm mb-1">
+                                {t("manageUsers.role")}
+                            </label>
                             <select
                                 value={role}
                                 onChange={(event) => setRole(event.target.value as UserRole)}
                                 className="w-full border rounded-lg p-2"
                             >
-                                <option value="VISITOR">Visitor</option>
-                                <option value="ATTENDANCE_OFFICER">Attendance Officer</option>
-                                <option value="MANAGER">Manager</option>
-                                <option value="SUPER_ADMIN">Super Admin</option>
+                                <option value="VISITOR">
+                                    {t("common.roles.VISITOR")}
+                                </option>
+                                <option value="ATTENDANCE_OFFICER">
+                                    {t("common.roles.ATTENDANCE_OFFICER")}
+                                </option>
+                                <option value="MANAGER">
+                                    {t("common.roles.MANAGER")}
+                                </option>
+                                <option value="SUPER_ADMIN">
+                                    {t("common.roles.SUPER_ADMIN")}
+                                </option>
                             </select>
                         </div>
 
                         {role === "ATTENDANCE_OFFICER" && (
                             <div>
-                                <label className="block text-sm mb-1">Department</label>
+                                <label className="block text-sm mb-1">
+                                    {t("manageUsers.department")}
+                                </label>
                                 <select
                                     required
                                     value={departmentId}
                                     onChange={(event) => setDepartmentId(event.target.value)}
                                     className="w-full border rounded-lg p-2"
                                 >
-                                    <option value="">Select department</option>
+                                    <option value="">
+                                        {t("manageUsers.selectDepartment")}
+                                    </option>
                                     {departments.map((department) => (
                                         <option key={department.id} value={department.id}>
                                             {department.name}
@@ -467,7 +498,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                 onClick={() => setIsFormOpen(false)}
                                 className="px-4 py-2 border rounded-lg"
                             >
-                                Cancel
+                                {t("manageUsers.cancel")}
                             </button>
 
                             <button
@@ -475,7 +506,9 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                 disabled={isSaving}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
                             >
-                                {isSaving ? "Saving..." : "Save User"}
+                                {isSaving
+                                    ? t("manageUsers.saving")
+                                    : t("manageUsers.saveUser")}
                             </button>
                         </div>
                     </form>
@@ -489,13 +522,15 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                         onSubmit={handlePasswordReset}
                         className="bg-white w-full max-w-md rounded-xl shadow-xl p-6 space-y-4"
                     >
-                        <h3 className="text-lg font-semibold">Reset Password</h3>
+                        <h3 className="text-lg font-semibold">
+                            {t("manageUsers.resetPassword")}
+                        </h3>
 
                         <input
                             type="password"
                             required
                             minLength={8}
-                            placeholder="New password (at least 8 characters)"
+                            placeholder={t("manageUsers.newPasswordPlaceholder")}
                             value={newPassword}
                             onChange={(event) => setNewPassword(event.target.value)}
                             className="w-full border rounded-lg p-2"
@@ -511,7 +546,7 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                 onClick={() => setPasswordUserId(null)}
                                 className="px-4 py-2 border rounded-lg"
                             >
-                                Cancel
+                                {t("manageUsers.cancel")}
                             </button>
 
                             <button
@@ -519,7 +554,9 @@ export default function ManageUsers({ departments }: ManageUsersProps) {
                                 disabled={isSaving}
                                 className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
                             >
-                                {isSaving ? "Resetting..." : "Reset Password"}
+                                {isSaving
+                                    ? t("manageUsers.resetting")
+                                    : t("manageUsers.resetPasswordButton")}
                             </button>
                         </div>
                     </form>

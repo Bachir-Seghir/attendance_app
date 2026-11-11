@@ -1,4 +1,6 @@
+
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import AppHeader from "./components/AppHeader";
 import AttendanceToolbar from "./components/AttendanceToolbar";
 import AttendanceTable from "./components/AttendanceTable";
@@ -27,6 +29,8 @@ function AttendanceApp({
   user,
   onLogout,
 }: AttendanceAppProps) {
+  const { t } = useTranslation();
+
   const [departments, setDepartments] = useState<Department[]>([]);
   const [month, setMonth] = useState(11);
   const [year, setYear] = useState(2026);
@@ -69,7 +73,7 @@ const [isSaving, setIsSaving] = useState(false);
         setEmployeesError(
             error instanceof Error
                 ? error.message
-                : "Failed to load employees."
+                : t("tools.loadingEmployeesError")
         );
     } finally {
         setIsLoadingEmployees(false);
@@ -92,7 +96,7 @@ const [isSaving, setIsSaving] = useState(false);
     alert(
       error instanceof Error
         ? error.message
-        : "Failed to export attendance."
+        : t("tools.exportError")
     );
   }
   };
@@ -124,7 +128,7 @@ useEffect(() => {
       setAttendanceError(
         error instanceof Error
           ? error.message
-          : "Failed to load attendance."
+          : t("tools.loading")
       );
     })
     .finally(() => {
@@ -164,7 +168,7 @@ useEffect(() => {
   });
 
   if (changes.length === 0) {
-    setSaveMessage("No changes to save.");
+    setSaveMessage(t("tools.noChangesToSave"));
     return;
   }
 
@@ -185,13 +189,13 @@ useEffect(() => {
 
   return remaining;
 });
-    setSaveMessage("Attendance saved successfully!");
+    setSaveMessage(t("tools.attendanceSaved"));
   } catch (error) {
     console.error(error);
     setSaveMessage(
       error instanceof Error
         ? error.message
-        : "Failed to save attendance. Please try again."
+        : t("tools.saveError")
     );
   } finally {
     setIsSaving(false);
@@ -200,12 +204,12 @@ useEffect(() => {
   
   const handleMonthChange = (newMonth: number) => {
     if (isSaving) {
-  setSaveMessage("Please wait until attendance saving is complete.");
+  setSaveMessage(t("tools.savingInProgress"));
   return;
     }
     
   if (Object.keys(pendingChanges).length > 0) {
-    setSaveMessage("Please save your attendance changes before changing the month.");
+    setSaveMessage(t("tools.saveBeforeChangingMonth"));
     return;
   }
 
@@ -214,11 +218,11 @@ useEffect(() => {
 
   const handleYearChange = (newYear: number) => {
   if (isSaving) {
-  setSaveMessage("Please wait until attendance saving is complete.");
+  setSaveMessage(t("tools.savingInProgress"));
   return;
 }
   if (Object.keys(pendingChanges).length > 0) {
-    setSaveMessage("Please save your attendance changes before changing the year.");
+    setSaveMessage(t("tools.saveBeforeChangingYear"));
     return;
   }
 
@@ -227,12 +231,12 @@ useEffect(() => {
   
   const handleDepartmentChange = (newDepartment: string) => {
     if (isSaving) {
-  setSaveMessage("Please wait until attendance saving is complete.");
+  setSaveMessage(t("tools.savingInProgress"));
   return;
 }
   if (Object.keys(pendingChanges).length > 0) {
     setSaveMessage(
-      "Please save your attendance changes before changing the department."
+      t("tools.saveBeforeChangingDepartment")
     );
     return;
   }
@@ -276,7 +280,7 @@ useEffect(() => {
     alt=""
     className="h-8 w-8"
   />
-  Exporter Excel
+  {t("tools.exportExcel")}
 </button>
 </div>
         <AttendanceToolbar
@@ -317,12 +321,13 @@ onYearChange={handleYearChange}
 
 
 export default function App() {
+  const { t } = useTranslation();
   const { user, isLoading, logout } = useAuth();
 
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        Loading...
+        {t("tools.loading")}
       </div>
     );
   }
@@ -334,8 +339,6 @@ export default function App() {
   const permissions = getUserPermissions(user);
 
   return (
-     
-
       <AttendanceApp
         canEditAttendance={permissions.canEditAttendance}
         canViewAllDepartments={permissions.canViewAllDepartments}
