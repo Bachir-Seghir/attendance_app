@@ -1,4 +1,7 @@
+
 import type { AuthUser } from "../services/api";
+import { useTranslation } from "react-i18next";
+import LanguageSwitcher from "./LanguageSwitcher";
 
 interface AppHeaderProps {
   user: AuthUser;
@@ -6,6 +9,8 @@ interface AppHeaderProps {
 }
 
 function AppHeader({ user, onLogout }: AppHeaderProps) {
+  const { t } = useTranslation();
+
   return (
     <header className="sticky top-0 z-50 bg-emerald-900 text-white shadow-md">
       <div className="flex items-center justify-between gap-4 px-6 py-3">
@@ -19,30 +24,32 @@ function AppHeader({ user, onLogout }: AppHeaderProps) {
           />
 
           <div>
-            <h1 className="text-xl font-bold tracking-tight">
-              Platforme de Pointage SOMIK - CP1Z
+            <h1 className="text-2xl tracking-tight">
+              {t("app.title")}
             </h1>
 
-            <p className="text-emerald-100 text-xs mt-2 font-bold">
-              Développée Par Bachir.Seghir@Sonatrach.dz
+            <p className="text-emerald-100 text-md mt-2">
+              {t("app.developedBy")} Bachir.Seghir@Sonatrach.dz
             </p>
           </div>
         </div>
 
-        {/* Right: User information and logout */}
+        {/* Right: User information, language and logout */}
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end">
             <span className="font-semibold">{user.name}</span>
             <span className="text-xs text-emerald-100">
-              {user.role}
+              {t(`roles.${user.role}`)}
             </span>
           </div>
+
+          <LanguageSwitcher />
 
           <button
             onClick={onLogout}
             className="rounded-lg border border-emerald-200 px-4 py-2 text-sm font-medium hover:bg-emerald-800 transition"
           >
-            Déconnecter
+            {t("app.logout")}
           </button>
         </div>
 
