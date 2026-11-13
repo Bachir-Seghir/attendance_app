@@ -214,7 +214,7 @@ inputRefs.current[nextKey]?.focus();
 					</span>
 
 					<span className="px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-semibold">
-						0–24 Hours
+						0–14 Hours
 					</span>
 
 					{Object.entries(ATTENDANCE_CODES).map(([code, label]) => (

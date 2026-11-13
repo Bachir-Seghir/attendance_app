@@ -8,6 +8,8 @@ export const ATTENDANCE_CODES = {
   FO: "Formation",
   AA: "Absence autorisée",
   AI: "Absence non autorisée",
+  N6: "6H nuit à partir 18h00",
+  N8: "8H nuit à partir 00h00"
 } as const;
 
 // Check whether a value is a valid completed entry
@@ -16,10 +18,15 @@ export function isValidAttendanceValue(value: string): boolean {
 
   if (normalizedValue === "") return true;
 
+   // Night shift: N6, N7, N8
+  if (/^N[6-8]$/.test(normalizedValue)) {
+    return true;
+  }
+
   // Accept numbers between 0 and 24, including decimals
   if (/^\d+(\.\d+)?$/.test(normalizedValue)) {
     const hours = Number(normalizedValue);
-    return hours >= 0 && hours <= 24;
+    return hours >= 0 && hours <= 14;
   }
 
   // Accept only predefined attendance codes
@@ -39,8 +46,8 @@ export function validateAttendanceInput(
     return normalizedValue;
   }
 
-  // Allow temporary prefixes such as C or A while typing CR or AA
-  const partialCodes = ["C", "A"];
+  // Allow temporary prefixes such as C N, or A while typing CR or AA or N6
+  const partialCodes = ["C", "A", "N"];
 
   if (partialCodes.includes(normalizedValue)) {
     return normalizedValue;
@@ -50,7 +57,7 @@ export function validateAttendanceInput(
   if (/^\d+\.?$/.test(normalizedValue)) {
     const hours = Number(normalizedValue);
 
-    if (hours <= 24) return normalizedValue;
+    if (hours <= 14) return normalizedValue;
   }
 
   return null;
