@@ -155,17 +155,24 @@ export interface AttendanceRecord {
   value: string;
 }
 
+
 export async function getAttendance(
-  month: number,
-  year: number
+  startDate: string,
+  endDate: string
 ): Promise<AttendanceRecord[]> {
+  const params = new URLSearchParams({
+    startDate,
+    endDate,
+  });
+
   const response = await apiRequest<{
     status: string;
     data: AttendanceRecord[];
-  }>(`/attendance?month=${month}&year=${year}`);
+  }>(`/attendance?${params.toString()}`);
 
   return response.data;
 }
+
 
 export async function saveAttendance(
   employeeId: number,

@@ -14,6 +14,11 @@ import ManageEmployees from "./components/ManageEmployees";
 import ManageUsers from "./components/ManageUsers";
 import excelIcon from "./assets/excel.svg";
 import { exportAttendanceExcel } from "./utils/exportAttendanceExcel";
+import {
+  getAttendancePeriod,
+  getAttendanceKey,
+  normalizeDateKey,
+} from "./utils/attendancePeriod";
 
 interface AttendanceAppProps {
   canEditAttendance: boolean;
@@ -26,11 +31,12 @@ interface AttendanceAppProps {
 function AttendanceApp({
   canEditAttendance,
   canViewAllDepartments,
+  canExportAttendance,
   user,
   onLogout,
 }: AttendanceAppProps) {
   const { t } = useTranslation();
-
+  
   const [departments, setDepartments] = useState<Department[]>([]);
   const [month, setMonth] = useState(11);
   const [year, setYear] = useState(2026);
@@ -46,12 +52,16 @@ const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
   const [attendanceError, setAttendanceError] = useState("");
-  
+  const attendancePeriod = getAttendancePeriod(
+  "CALENDAR",
+  year,
+  month
+);
   const loadDepartments = async () => {
     const data = await getDepartments();
 
-    console.log("Fetched departments:", data);
-    console.log("Departments count:", data.length);
+
+    
 
     setDepartments(data);
 };
@@ -85,8 +95,8 @@ const [isSaving, setIsSaving] = useState(false);
     await exportAttendanceExcel({
       employees,
       attendance,
-      year,
-      month,
+      startDate: attendancePeriod.startDate,
+      endDate: attendancePeriod.endDate,
       department:
         user.role === "SUPER_ADMIN" || user.role === "MANAGER"
           ? department
@@ -99,23 +109,26 @@ const [isSaving, setIsSaving] = useState(false);
         : t("tools.exportError")
     );
   }
-  };
+};
   
 useEffect(() => {
     loadEmployees();
 }, [month, year]);
   
-  useEffect(() => {
+useEffect(() => {
   setIsLoadingAttendance(true);
   setAttendanceError("");
 
-  getAttendance(month, year)
+  getAttendance(
+    attendancePeriod.startDate,
+    attendancePeriod.endDate
+  )
     .then((data) => {
       const attendanceData: Record<string, string> = {};
 
       data.forEach((record) => {
-        const day = new Date(record.date).getUTCDate();
-        const key = `${record.employeeId}-${day}`;
+        const date = normalizeDateKey(record.date);
+        const key = getAttendanceKey(record.employeeId, date);
 
         attendanceData[key] = record.value;
       });
@@ -134,16 +147,22 @@ useEffect(() => {
     .finally(() => {
       setIsLoadingAttendance(false);
     });
-}, [month, year]);
+}, [
+  attendancePeriod.startDate,
+  attendancePeriod.endDate,
+  t,
+]);
   
-  const handleAttendanceChange = (
+ const handleAttendanceChange = (
   employeeId: number,
-  day: number,
+  date: string,
   value: string
-  ) => {
-    if (!canEditAttendance) return;
-    setSaveMessage("");
-  const key = `${employeeId}-${day}`;
+) => {
+  if (!canEditAttendance) return;
+
+  setSaveMessage("");
+
+  const key = getAttendanceKey(employeeId, date);
 
   setAttendance((previous) => ({
     ...previous,
@@ -159,13 +178,21 @@ useEffect(() => {
   const handleSaveAttendance = async () => {
     if (!canEditAttendance) return;
     const changesToSave = { ...pendingChanges };
-  const changes = Object.entries(changesToSave).map(([key, value]) => {
-    const [employeeId, day] = key.split("-").map(Number);
 
-    const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const changes = Object.entries(changesToSave).map(
+  ([key, value]) => {
+    const separatorIndex = key.indexOf("-");
 
-    return { employeeId, date, value };
-  });
+    const employeeId = Number(key.slice(0, separatorIndex));
+    const date = key.slice(separatorIndex + 1);
+
+    return {
+      employeeId,
+      date,
+      value,
+    };
+  }
+);
 
   if (changes.length === 0) {
     setSaveMessage(t("tools.noChangesToSave"));
@@ -269,23 +296,23 @@ useEffect(() => {
             onEmployeesChanged={loadEmployees}
         />
           )}
-          <button
-  type="button"
-  onClick={handleExportExcel}
-  disabled={employees.length === 0}
-  className="inline-flex items-center gap-2 rounded-lg hover:cursor-pointer hover:bg-orange-300 px-4 py-2 text-md font-medium text-black shadow-sm  disabled:cursor-not-allowed disabled:opacity-50"
->
-  <img
-    src={excelIcon}
-    alt=""
-    className="h-8 w-8"
-  />
-  {t("tools.exportExcel")}
-</button>
+          {canExportAttendance && (
+  <button
+    type="button"
+    onClick={handleExportExcel}
+    disabled={employees.length === 0}
+    className="inline-flex items-center gap-2 rounded-lg hover:cursor-pointer hover:bg-orange-300 px-4 py-2 text-md font-medium text-black shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+  >
+    <img src={excelIcon} alt="" className="h-8 w-8" />
+    {t("tools.exportExcel")}
+  </button>
+)}
 </div>
         <AttendanceToolbar
           month={month}
           year={year}
+          startDate={attendancePeriod.startDate}
+  endDate={attendancePeriod.endDate}
           department={department}
           attendance={attendance}
           onMonthChange={handleMonthChange}
@@ -298,8 +325,8 @@ onYearChange={handleYearChange}
         />
 
         <AttendanceTable
-          month={month}
-          year={year}
+          startDate={attendancePeriod.startDate}
+  endDate={attendancePeriod.endDate}
           department={department}
           attendance={attendance}
           employees={employees}

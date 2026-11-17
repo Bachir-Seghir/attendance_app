@@ -8,8 +8,7 @@ export const ATTENDANCE_CODES = {
   FO: "Formation",
   AA: "Absence autorisée",
   AI: "Absence non autorisée",
-  N6: "6H nuit à partir 18h00",
-  N8: "8H nuit à partir 00h00"
+  'N6/N8': "N signifie Nuit",
 } as const;
 
 // Check whether a value is a valid completed entry

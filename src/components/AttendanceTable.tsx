@@ -1,6 +1,13 @@
 import { useRef } from "react";
 import type { Employee } from "../services/api";
-import { calculateMonthlyTotals } from "../utils/attendanceCalculations";
+import { calculatePeriodTotals } from "../utils/attendanceCalculations";
+
+import {
+  type DateKey,
+  getDatesBetween,
+  getAttendanceKey,
+  isWeekendDate,
+} from "../utils/attendancePeriod";
 import {
 	validateAttendanceInput,
 	isValidAttendanceValue,
@@ -8,8 +15,8 @@ import {
 import { ATTENDANCE_CODES } from "../utils/attendanceValidation";
 
 interface AttendanceTableProps {
-	month: number;
-	year: number;
+	startDate: DateKey;
+  endDate: DateKey;
 	department: string;
 	employees: Employee[];
 	attendance: Record<string, string>;
@@ -21,13 +28,15 @@ interface AttendanceTableProps {
 	isLoadingAttendance: boolean;
 	attendanceError: string;
 	canEditAttendance: boolean;
-	onAttendanceChange: (employeeId: number, day: number, value: string) => void;
+	onAttendanceChange: (
+  employeeId: number,
+  date: DateKey,
+  value: string
+) => void;
 	onSaveAttendance: () => void;
 }
 
 function AttendanceTable({
-	month,
-	year,
 	department,
 	employees,
 	attendance,
@@ -40,56 +49,65 @@ function AttendanceTable({
 	employeesError,
 	isLoadingAttendance,
 	attendanceError,
-  canEditAttendance,
+	canEditAttendance,
+  startDate,
+  endDate,
 }: AttendanceTableProps) {
-	// Calculate the number of days in the selected month
-	const daysInMonth = new Date(year, month, 0).getDate();
+	const dates = getDatesBetween(startDate, endDate);
 
-	// Check whether a day is Friday or Saturday
-	const isWeekend = (day: number) => {
-		const date = new Date(year, month - 1, day);
-		return date.getDay() === 5 || date.getDay() === 6;
-	};
+const getWeekdayInitial = (date: DateKey) => {
+  return new Date(`${date}T00:00:00Z`)
+    .toLocaleDateString("fr-FR", {
+      weekday: "long",
+      timeZone: "UTC",
+    })
+    .charAt(0)
+    .toUpperCase();
+};
 
-	// Generate the days of the month
-	const days = Array.from({ length: daysInMonth }, (_, index) => index + 1);
+const getDayNumber = (date: DateKey) => {
+  return Number(date.slice(8, 10));
+};
 
-	// Get French weekday initials
-	const weekdays = days.map((day) => {
-		const date = new Date(year, month - 1, day);
-
-		return date
-			.toLocaleDateString("fr-FR", { weekday: "long" })
-			.charAt(0)
-			.toUpperCase();
-	});
+const getMonthLabel = (date: DateKey) => {
+  return new Date(`${date}T00:00:00Z`)
+    .toLocaleDateString("fr-FR", {
+      month: "short",
+      timeZone: "UTC",
+    });
+};
 
 	const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
 	// Update an attendance cell
 	const handleAttendanceChange = (
-		employeeId: number,
-		day: number,
-		value: string,
-	) => {
-		if (!canEditAttendance) return;
-		const validatedValue = validateAttendanceInput(value);
+  employeeId: number,
+  date: DateKey,
+  value: string
+) => {
+  if (!canEditAttendance) return;
 
-		// Reject invalid characters or values
-		if (validatedValue === null) return;
+  const validatedValue = validateAttendanceInput(value);
 
-		onAttendanceChange(employeeId, day, validatedValue);
-	};
+  if (validatedValue === null) return;
 
-	const handleAttendanceBlur = (employeeId: number, day: number) => {
-		if (!canEditAttendance) return;
-		const key = `${employeeId}-${day}`;
-		const value = attendance[key] ?? "";
+  onAttendanceChange(employeeId, date, validatedValue);
+};
 
-		if (value !== "" && !isValidAttendanceValue(value)) {
-			onAttendanceChange(employeeId, day, "");
-		}
-	};
+const handleAttendanceBlur = (
+  employeeId: number,
+  date: DateKey
+) => {
+  if (!canEditAttendance) return;
+
+  const key = getAttendanceKey(employeeId, date);
+  const value = attendance[key] ?? "";
+
+  if (value !== "" && !isValidAttendanceValue(value)) {
+    onAttendanceChange(employeeId, date, "");
+  }
+};
+
 
 	// Filter employees by department
 	const filteredEmployees =
@@ -99,78 +117,85 @@ function AttendanceTable({
     ).filter((employee) => {
         if (employee.isActive) return true;
 
-        return days.some((day) => {
-            const key = `${employee.id}-${day}`;
-            return (attendance[key] ?? "").trim() !== "";
-        });
+        return dates.some((date) => {
+  const key = getAttendanceKey(employee.id, date);
+
+  return (attendance[key] ?? "").trim() !== "";
+});
     });
 
 	const handleCellNavigation = (
-		event: React.KeyboardEvent<HTMLInputElement>,
-		employeeIndex: number,
-		day: number,
-	) => {
-		const employeeCount = filteredEmployees.length;
+  event: React.KeyboardEvent<HTMLInputElement>,
+  employeeIndex: number,
+  dateIndex: number
+) => {
+  const employeeCount = filteredEmployees.length;
 
-		let nextEmployeeIndex = employeeIndex;
-		let nextDay = day;
+  let nextEmployeeIndex = employeeIndex;
+  let nextDateIndex = dateIndex;
 
-		switch (event.key) {
-			case "ArrowLeft":
-				nextDay--;
-				break;
+  switch (event.key) {
+    case "ArrowLeft":
+      nextDateIndex--;
+      break;
 
-			case "ArrowRight":
-				nextDay++;
-				break;
+    case "ArrowRight":
+      nextDateIndex++;
+      break;
 
-			case "ArrowUp":
-				nextEmployeeIndex--;
-				break;
+    case "ArrowUp":
+      nextEmployeeIndex--;
+      break;
 
-			case "ArrowDown":
-				nextEmployeeIndex++;
-				break;
+    case "ArrowDown":
+      nextEmployeeIndex++;
+      break;
 
-			default:
-				return;
-		}
+    default:
+      return;
+  }
 
-		// Prevent cursor movement inside the input
-		event.preventDefault();
+  event.preventDefault();
 
-		// Keep navigation inside the table
-		if (
-			nextEmployeeIndex < 0 ||
-			nextEmployeeIndex >= employeeCount ||
-			nextDay < 1 ||
-			nextDay > daysInMonth
-		) {
-			return;
-		}
+  if (
+    nextDateIndex < 0 ||
+    nextDateIndex >= dates.length
+  ) {
+    return;
+  }
 
-		// Skip inactive employees when navigating vertically
-if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+  if (
+    event.key === "ArrowUp" ||
+    event.key === "ArrowDown"
+  ) {
     const direction = event.key === "ArrowUp" ? -1 : 1;
 
     while (
-        nextEmployeeIndex >= 0 &&
-        nextEmployeeIndex < employeeCount &&
-        !filteredEmployees[nextEmployeeIndex].isActive
+      nextEmployeeIndex >= 0 &&
+      nextEmployeeIndex < employeeCount &&
+      !filteredEmployees[nextEmployeeIndex].isActive
     ) {
-        nextEmployeeIndex += direction;
+      nextEmployeeIndex += direction;
     }
-}
+  }
 
-if (nextEmployeeIndex < 0 || nextEmployeeIndex >= employeeCount) {
+  if (
+    nextEmployeeIndex < 0 ||
+    nextEmployeeIndex >= employeeCount
+  ) {
     return;
-}
+  }
 
-const nextEmployee = filteredEmployees[nextEmployeeIndex];
-const nextKey = `${nextEmployee.id}-${nextDay}`;
+  const nextEmployee = filteredEmployees[nextEmployeeIndex];
+  const nextDate = dates[nextDateIndex];
 
-inputRefs.current[nextKey]?.focus();
-	};
+  const nextKey = getAttendanceKey(
+    nextEmployee.id,
+    nextDate
+  );
+
+  inputRefs.current[nextKey]?.focus();
+};
 
 	return (
 		<section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
@@ -251,20 +276,32 @@ inputRefs.current[nextKey]?.focus();
 								HS
 							</th>
 							{/* Day headers */}
-							{days.map((day, index) => (
-								<th
-									key={day}
-									className={`min-w-12 px-2 py-2 text-center border-b border-r ${
-										isWeekend(day)
-											? "bg-red-300 text-red-950"
-											: "bg-gray-100 text-gray-700"
-									}`}
-								>
-									<div className="text-xs">{weekdays[index]}</div>
+							{dates.map((date) => {
+  const weekend = isWeekendDate(date);
 
-									<div className="font-bold">{day}</div>
-								</th>
-							))}
+  return (
+    <th
+      key={date}
+      className={`min-w-12 px-2 py-2 text-center border-b border-r ${
+        weekend
+          ? "bg-red-300 text-red-950"
+          : "bg-gray-100 text-gray-700"
+      }`}
+    >
+      <div className="text-xs">
+        {getWeekdayInitial(date)}
+      </div>
+
+      <div className="font-bold">
+        {getDayNumber(date)}
+      </div>
+
+      <div className="text-xs uppercase">
+        {getMonthLabel(date)}
+      </div>
+    </th>
+  );
+})}
 						</tr>
 					</thead>
 
@@ -272,7 +309,7 @@ inputRefs.current[nextKey]?.focus();
 						{isLoadingEmployees ? (
 							<tr>
 								<td
-									colSpan={days.length + 4}
+									colSpan={dates.length + 4}
 									className="text-center py-10 text-gray-500"
 								>
 									Loading employees...
@@ -281,7 +318,7 @@ inputRefs.current[nextKey]?.focus();
 						) : employeesError ? (
 							<tr>
 								<td
-									colSpan={days.length + 4}
+									colSpan={dates.length + 4}
 									className="text-center py-10 text-red-600"
 								>
 									{employeesError}
@@ -290,7 +327,7 @@ inputRefs.current[nextKey]?.focus();
 						) : isLoadingAttendance ? (
     <tr>
         <td
-            colSpan={days.length + 4}
+            colSpan={dates.length + 4}
             className="text-center py-10 text-gray-500"
         >
             Loading attendance...
@@ -299,7 +336,7 @@ inputRefs.current[nextKey]?.focus();
 ) : attendanceError ? (
     <tr>
         <td
-            colSpan={days.length + 4}
+            colSpan={dates.length + 4}
             className="text-center py-10 text-red-600"
         >
             {attendanceError}
@@ -308,12 +345,11 @@ inputRefs.current[nextKey]?.focus();
 ) : (
     <>
 								{filteredEmployees.map((employee, employeeIndex) => {
-									const monthlyTotals = calculateMonthlyTotals(
-										employee.id,
-										attendance,
-										year,
-										month,
-									);
+									const monthlyTotals = calculatePeriodTotals(
+  employee.id,
+  attendance,
+  dates
+);
 
 									return (
 										<tr
@@ -353,59 +389,64 @@ inputRefs.current[nextKey]?.focus();
 												{monthlyTotals.overtimeHours}
 											</td>
 											{/* Attendance cells */}
-											{days.map((day) => {
-												const weekend = isWeekend(day);
-												const key = `${employee.id}-${day}`;
+											{dates.map((date, dateIndex) => {
+  const weekend = isWeekendDate(date);
 
-												return (
-													<td
-														key={day}
-														className={`p-1 border-b border-r text-center ${
-    !employee.isActive
-        ? "bg-gray-200"
-        : weekend
-          ? "bg-red-100"
-          : "bg-white"
-}`}
-													>
-														<input
-															disabled={!canEditAttendance || !employee.isActive}
-															onFocus={(event) => event.target.select()}
-															ref={(element) => {
-																inputRefs.current[key] = element;
-															}}
-															onKeyDown={(event) =>
-																handleCellNavigation(event, employeeIndex, day)
-															}
-															maxLength={5}
-															autoComplete="off"
-															type="text"
-															value={attendance[key] ?? ""}
-															onChange={(event) =>
-																handleAttendanceChange(
-																	employee.id,
-																	day,
-																	event.target.value,
-																)
-															}
-															onBlur={() =>
-																handleAttendanceBlur(employee.id, day)
-															}
-															className={`w-10 h-9 text-center rounded-md border outline-none ${
-    !employee.isActive
-        ? "bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed"
-        : weekend
-          ? "bg-red-300 text-red-950 border-gray-300"
-          : "bg-gray-100 text-gray-900 border-gray-300"
-} ${
-    employee.isActive && canEditAttendance
-        ? "focus:border-blue-400 focus:ring-2 focus:ring-blue-400"
-        : ""
-}`}
-														/>
-													</td>
-												);
-											})}
+  const key = getAttendanceKey(employee.id, date);
+
+  return (
+    <td
+      key={date}
+      className={`p-1 border-b border-r text-center ${
+        !employee.isActive
+          ? "bg-gray-200"
+          : weekend
+            ? "bg-red-100"
+            : "bg-white"
+      }`}
+    >
+      <input
+        disabled={!canEditAttendance || !employee.isActive}
+        onFocus={(event) => event.target.select()}
+        ref={(element) => {
+          inputRefs.current[key] = element;
+        }}
+        onKeyDown={(event) =>
+          handleCellNavigation(
+            event,
+            employeeIndex,
+            dateIndex
+          )
+        }
+        maxLength={5}
+        autoComplete="off"
+        type="text"
+        value={attendance[key] ?? ""}
+        onChange={(event) =>
+          handleAttendanceChange(
+            employee.id,
+            date,
+            event.target.value
+          )
+        }
+        onBlur={() =>
+          handleAttendanceBlur(employee.id, date)
+        }
+        className={`w-10 h-9 text-center rounded-md border outline-none ${
+          !employee.isActive
+            ? "bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed"
+            : weekend
+              ? "bg-red-300 text-red-950 border-gray-300"
+              : "bg-gray-100 text-gray-900 border-gray-300"
+        } ${
+          employee.isActive && canEditAttendance
+            ? "focus:border-blue-400 focus:ring-2 focus:ring-blue-400"
+            : ""
+        }`}
+      />
+    </td>
+  );
+})}
 										</tr>
 									);
 								})}
@@ -416,7 +457,7 @@ inputRefs.current[nextKey]?.focus();
 									filteredEmployees.length === 0 && (
 										<tr>
 											<td
-												colSpan={days.length + 4}
+												colSpan={dates.length + 4}
 												className="text-center py-10 text-gray-500"
 											>
 												No employees found.

@@ -1,28 +1,33 @@
-import { employees } from "../data/employees";
-import { calculateMonthlyTotals } from "../utils/attendanceCalculations";
+
+import type { Employee } from "../services/api";
+import { calculatePeriodTotals } from "../utils/attendanceCalculations";
+import {
+  type DateKey,
+  getDatesBetween,
+} from "../utils/attendancePeriod";
 
 export function useAttendanceSummary(
   department: string,
   attendance: Record<string, string>,
-  year: number,
-  month: number
+  employees: Employee[],
+  startDate: DateKey,
+  endDate: DateKey
 ) {
-  // Filter employees by selected department
   const filteredEmployees =
     department === "all"
       ? employees
       : employees.filter(
-          (employee) => employee.department === department
+          (employee) => employee.department.name === department
         );
 
-  // Calculate totals for filtered employees
+  const dates = getDatesBetween(startDate, endDate);
+
   return filteredEmployees.reduce(
     (totals, employee) => {
-      const employeeTotals = calculateMonthlyTotals(
+      const employeeTotals = calculatePeriodTotals(
         employee.id,
         attendance,
-        year,
-        month
+        dates
       );
 
       return {

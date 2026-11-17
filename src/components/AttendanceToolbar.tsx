@@ -1,18 +1,21 @@
 
-import { useEmployeeCount } from "../hooks/useEmployeeCount";
 import { useAttendanceSummary } from "../hooks/useAttendanceSummary";
 import type { Department, Employee } from "../services/api";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
+import type { DateKey } from "../utils/attendancePeriod";
 
 interface AttendanceToolbarProps {
   month: number;
   year: number;
+  startDate: DateKey;
+  endDate: DateKey;
   department: string;
   canSelectDepartment: boolean;
   departments: Department[];
   employees: Employee[];
   attendance: Record<string, string>;
+
   onMonthChange: (month: number) => void;
   onYearChange: (year: number) => void;
   onDepartmentChange: (department: string) => void;
@@ -21,7 +24,10 @@ interface AttendanceToolbarProps {
 function AttendanceToolbar({
   month,
   year,
+  startDate,
+  endDate,
   department,
+  employees,
   attendance,
   onMonthChange,
   onYearChange,
@@ -29,37 +35,53 @@ function AttendanceToolbar({
   canSelectDepartment,
   departments,
 }: AttendanceToolbarProps) {
-  const {t} = useTranslation()
-  const totalEmployees = useEmployeeCount(department);
+  const { t } = useTranslation();
 
+  // Calculate employee count from the API employee list
+  const totalEmployees =
+    department === "all"
+      ? employees.length
+      : employees.filter(
+          (employee) => employee.department.name === department
+        ).length;
+
+  // Calculate attendance totals for the selected period
   const summary = useAttendanceSummary(
     department,
     attendance,
-    year,
-    month
+    employees,
+    startDate,
+    endDate
   );
 
-  
+  const locale = i18n.language.startsWith("en")
+    ? "en-US"
+    : "fr-FR";
+
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
       <div className="flex flex-wrap items-end gap-4">
+
         {/* Month */}
         <div className="flex flex-col gap-2">
-          <label htmlFor="month" className="text-sm font-medium text-gray-600">
+          <label
+            htmlFor="month"
+            className="text-sm font-medium text-gray-600"
+          >
             {t("toolBar.month")}
           </label>
 
           <select
             id="month"
             value={month}
-            onChange={(event) => onMonthChange(Number(event.target.value))}
+            onChange={(event) =>
+              onMonthChange(Number(event.target.value))
+            }
             className="border border-gray-300 rounded-lg px-3 py-2 min-w-36 outline-none focus:ring-2 focus:ring-emerald-600"
           >
             {Array.from({ length: 12 }, (_, index) => (
               <option key={index + 1} value={index + 1}>
-                {new Date(2026, index).toLocaleDateString(
-                  i18n.language === "en" ? "en-US" : "fr-FR",
-                  {
+                {new Date(2026, index).toLocaleDateString(locale, {
                   month: "long",
                 })}
               </option>
@@ -69,14 +91,19 @@ function AttendanceToolbar({
 
         {/* Year */}
         <div className="flex flex-col gap-2">
-          <label htmlFor="year" className="text-sm font-medium text-gray-600">
+          <label
+            htmlFor="year"
+            className="text-sm font-medium text-gray-600"
+          >
             {t("toolBar.year")}
           </label>
 
           <select
             id="year"
             value={year}
-            onChange={(event) => onYearChange(Number(event.target.value))}
+            onChange={(event) =>
+              onYearChange(Number(event.target.value))
+            }
             className="border border-gray-300 rounded-lg px-3 py-2 min-w-28 outline-none focus:ring-2 focus:ring-emerald-600"
           >
             {Array.from(
@@ -103,12 +130,16 @@ function AttendanceToolbar({
             <select
               id="department"
               value={department}
-              onChange={(event) => onDepartmentChange(event.target.value)}
+              onChange={(event) =>
+                onDepartmentChange(event.target.value)
+              }
               className="border border-gray-300 rounded-lg px-3 py-2 min-w-44 outline-none focus:ring-2 focus:ring-emerald-600"
             >
-              <option value="all">{t("toolBar.allDepartment")}</option>
+              <option value="all">
+                {t("toolBar.allDepartment")}
+              </option>
 
-              {departments?.map((item) => (
+              {departments.map((item) => (
                 <option key={item.id} value={item.name}>
                   {item.name}
                 </option>
@@ -151,7 +182,9 @@ function AttendanceToolbar({
               <p className="text-sm text-emerald-100 font-medium">
                 {t("toolBar.totalEmployees")}
               </p>
-              <p className="text-3xl font-bold">{totalEmployees}</p>
+              <p className="text-3xl font-bold">
+                {totalEmployees}
+              </p>
             </div>
 
             <div className="rounded-full bg-emerald-100 py-2 px-3">
