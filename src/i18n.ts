@@ -55,10 +55,12 @@ const resources = {
       },
           
       toolBar: {
+
         period: "Période du Pointage",
         periodInfoTxt:"Selectionner la période du pointage qui vous convient",
             month: "Mois",
-            year: "Année",
+        year: "Année",
+            days:"Jours",
               department: "Affectation",
               NH: "H. Normales",
               OT: "H. Sup.",

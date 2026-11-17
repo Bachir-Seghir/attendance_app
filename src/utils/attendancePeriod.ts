@@ -118,3 +118,43 @@ export function isWeekendDate(date: DateKey): boolean {
 
   return weekday === 5 || weekday === 6;
 }
+
+export interface AttendancePeriodSelection {
+  month: number;
+  year: number;
+}
+
+export function getDefaultAttendanceSelection(
+  mode: AttendancePeriodMode,
+  date: Date = new Date()
+): AttendancePeriodSelection {
+  const currentMonth = date.getMonth() + 1;
+  const currentYear = date.getFullYear();
+
+  if (mode === "CALENDAR") {
+    return {
+      month: currentMonth,
+      year: currentYear,
+    };
+  }
+
+  // Company period: 21st of the start month -> 20th of next month.
+  // Before or on the 20th, the active period started last month.
+  if (date.getDate() <= 20) {
+    const previousMonth = new Date(
+      currentYear,
+      currentMonth - 2,
+      1
+    );
+
+    return {
+      month: previousMonth.getMonth() + 1,
+      year: previousMonth.getFullYear(),
+    };
+  }
+
+  return {
+    month: currentMonth,
+    year: currentYear,
+  };
+}

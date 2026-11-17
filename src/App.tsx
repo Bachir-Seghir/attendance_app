@@ -18,6 +18,7 @@ import {
   getAttendancePeriod,
   getAttendanceKey,
   normalizeDateKey,
+  getDefaultAttendanceSelection,
   type AttendancePeriodMode,
 } from "./utils/attendancePeriod";
 
@@ -40,10 +41,15 @@ function AttendanceApp({
   const today = new Date();
 
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [month, setMonth] = useState(today.getMonth());
-  const [year, setYear] = useState(today.getFullYear());
   const [periodMode, setPeriodMode] =
   useState<AttendancePeriodMode>("COMPANY");
+
+const [initialSelection] = useState(() =>
+  getDefaultAttendanceSelection("COMPANY")
+);
+
+const [month, setMonth] = useState(initialSelection.month);
+const [year, setYear] = useState(initialSelection.year);
   const [department, setDepartment] = useState("all");
   const [attendance, setAttendance] = useState<Record<string, string>>({});
   const [pendingChanges, setPendingChanges] = useState<
@@ -275,9 +281,15 @@ useEffect(() => {
     return false;
   }
 
+  const selection = getDefaultAttendanceSelection(newMode);
+
   setPeriodMode(newMode);
+  setMonth(selection.month);
+  setYear(selection.year);
+  setSaveMessage("");
+
   return true;
-  };
+};
   
   const handleDepartmentChange = (newDepartment: string) => {
     if (isSaving) {
