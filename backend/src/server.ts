@@ -401,48 +401,71 @@ app.get("/api/employees", authenticateToken, async (req, res) => {
             return;
         }
 
-        const month = Number(req.query.month);
-        const year = Number(req.query.year);
+        
+const startDateParam = req.query.startDate;
+const endDateParam = req.query.endDate;
 
-        const hasMonthFilter =
-            Number.isInteger(month) &&
-            month >= 1 &&
-            month <= 12 &&
-            Number.isInteger(year) &&
-            year >= 2000 &&
-            year <= 9999;
+const hasDateFilter =
+  startDateParam !== undefined || endDateParam !== undefined;
 
-        const includeInactive = req.query.includeInactive === "true";
+let startDate: Date | null = null;
+let endDateExclusive: Date | null = null;
 
-        const where: any = {
-            ...(user.role === Role.ATTENDANCE_OFFICER
-                ? { departmentId: user.departmentId! }
-                : {}),
-        };
+if (hasDateFilter) {
+  const parsedStartDate = parseAttendanceDate(startDateParam);
+  const parsedEndDate = parseAttendanceDate(endDateParam);
 
-        if (includeInactive) {
-            // Management screen: return active and inactive employees.
-        } else if (hasMonthFilter) {
-            const startDate = new Date(Date.UTC(year, month - 1, 1));
-            const endDate = new Date(Date.UTC(year, month, 1));
+  if (!parsedStartDate || !parsedEndDate) {
+    res.status(400).json({
+      status: "error",
+      message: "Valid startDate and endDate are required (YYYY-MM-DD).",
+    });
+    return;
+  }
 
-            where.OR = [
-                { isActive: true },
-                {
-                    isActive: false,
-                    attendance: {
-                        some: {
-                            date: {
-                                gte: startDate,
-                                lt: endDate,
-                            },
-                        },
-                    },
-                },
-            ];
-        } else {
-            where.isActive = true;
-        }
+  if (parsedStartDate > parsedEndDate) {
+    res.status(400).json({
+      status: "error",
+      message: "startDate must be before or equal to endDate.",
+    });
+    return;
+  }
+
+  startDate = parsedStartDate;
+
+  endDateExclusive = new Date(parsedEndDate);
+  endDateExclusive.setUTCDate(endDateExclusive.getUTCDate() + 1);
+}
+
+const includeInactive = req.query.includeInactive === "true";
+
+const where: any = {
+  ...(user.role === Role.ATTENDANCE_OFFICER
+    ? { departmentId: user.departmentId! }
+    : {}),
+};
+
+if (includeInactive) {
+  // Management screen: return active and inactive employees.
+} else if (hasDateFilter) {
+  where.OR = [
+    { isActive: true },
+    {
+      isActive: false,
+      attendance: {
+        some: {
+          date: {
+            gte: startDate!,
+            lt: endDateExclusive!,
+          },
+        },
+      },
+    },
+  ];
+} else {
+  where.isActive = true;
+}
+
 
         const employees = await prisma.employee.findMany({
             where,
@@ -792,62 +815,67 @@ if (permissionError) {
   }
 });
 
-app.get("/api/attendance",authenticateToken, async (req, res) => {
-  try {
-    const month = Number(req.query.month);
-    const year = Number(req.query.year);
 
-    if (
-      !Number.isInteger(month) ||
-      month < 1 ||
-      month > 12 ||
-      !Number.isInteger(year) ||
-      year < 2000
-    ) {
+app.get("/api/attendance", authenticateToken, async (req, res) => {
+  try {
+    const startDate = parseAttendanceDate(req.query.startDate);
+    const endDate = parseAttendanceDate(req.query.endDate);
+
+    if (!startDate || !endDate) {
       res.status(400).json({
         status: "error",
-        message: "Valid month and year are required",
+        message: "Valid startDate and endDate are required (YYYY-MM-DD).",
       });
       return;
     }
 
-    const startDate = new Date(Date.UTC(year, month - 1, 1));
-    const endDate = new Date(Date.UTC(year, month, 1));
+    if (startDate > endDate) {
+      res.status(400).json({
+        status: "error",
+        message: "startDate must be before or equal to endDate.",
+      });
+      return;
+    }
 
     const user = getAuthenticatedUser(req);
 
-if (
-  user.role === Role.ATTENDANCE_OFFICER &&
-  user.departmentId === null
-) {
-  res.status(403).json({
-    status: "error",
-    message: "Your account has no assigned department.",
-  });
-  return;
-}
+    // Attendance officers must have an assigned department.
+    if (
+      user.role === Role.ATTENDANCE_OFFICER &&
+      user.departmentId === null
+    ) {
+      res.status(403).json({
+        status: "error",
+        message: "Your account has no assigned department.",
+      });
+      return;
+    }
 
-const attendance = await prisma.attendance.findMany({
-  where: {
-    date: {
-      gte: startDate,
-      lt: endDate,
-    },
-    ...(user.role === Role.ATTENDANCE_OFFICER
-      ? {
-          employee: {
-            departmentId: user.departmentId!,
-          },
-        }
-      : {}),
-  },
-  include: {
-    employee: true,
-  },
-  orderBy: {
-    date: "asc",
-  },
-});
+    // Exclusive end boundary: midnight after the requested end date.
+    const endExclusive = new Date(endDate);
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+
+    const attendance = await prisma.attendance.findMany({
+      where: {
+        date: {
+          gte: startDate,
+          lt: endExclusive,
+        },
+        ...(user.role === Role.ATTENDANCE_OFFICER
+          ? {
+              employee: {
+                departmentId: user.departmentId!,
+              },
+            }
+          : {}),
+      },
+      include: {
+        employee: true,
+      },
+      orderBy: {
+        date: "asc",
+      },
+    });
 
     res.json({
       status: "success",
@@ -862,6 +890,7 @@ const attendance = await prisma.attendance.findMany({
     });
   }
 });
+
 
 app.delete("/api/attendance",authenticateToken, authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER), async (req, res) => {
   try {

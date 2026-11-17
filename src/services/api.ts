@@ -121,20 +121,18 @@ export interface Employee {
 }
 
 export async function getEmployees(
-    includeInactive = false,
-    month?: number,
-    year?: number
+  includeInactive = false,
+  startDate?: string,
+  endDate?: string
 ): Promise<Employee[]> {
     const params = new URLSearchParams();
 
-    if (includeInactive) {
-        params.set("includeInactive", "true");
-    }
+    params.set("includeInactive", String(includeInactive));
 
-    if (month !== undefined && year !== undefined) {
-        params.set("month", String(month));
-        params.set("year", String(year));
-    }
+if (startDate && endDate) {
+  params.set("startDate", startDate);
+  params.set("endDate", endDate);
+}
 
     const query = params.toString();
 

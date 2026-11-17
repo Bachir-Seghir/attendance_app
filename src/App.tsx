@@ -73,7 +73,11 @@ const [isSaving, setIsSaving] = useState(false);
     setIsLoadingEmployees(true);
 
     try {
-        const data = await getEmployees(false, month, year);
+        const data = await getEmployees(
+  false,
+  attendancePeriod.startDate,
+  attendancePeriod.endDate
+);
 
         setEmployees(data);
         setEmployeesError("");
@@ -113,7 +117,7 @@ const [isSaving, setIsSaving] = useState(false);
   
 useEffect(() => {
     loadEmployees();
-}, [month, year]);
+}, [attendancePeriod.startDate, attendancePeriod.endDate]);
   
 useEffect(() => {
   setIsLoadingAttendance(true);
