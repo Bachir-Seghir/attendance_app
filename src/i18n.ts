@@ -54,13 +54,15 @@ const resources = {
         loginIn:"Connexion..."
       },
           
-          toolBar: {
+      toolBar: {
+        period: "Période du Pointage",
+        periodInfoTxt:"Selectionner la période du pointage qui vous convient",
             month: "Mois",
             year: "Année",
               department: "Affectation",
-              NH: "Heures Normales",
-              OT: "Heures Sup.",
-              totals: "Total des Heures",
+              NH: "H. Normales",
+              OT: "H. Sup.",
+              totals: "des Heures",
               totalEmployees: "Personnel Total",
             allDepartment:"Toutes les Structures"
           },

@@ -18,6 +18,7 @@ import {
   getAttendancePeriod,
   getAttendanceKey,
   normalizeDateKey,
+  type AttendancePeriodMode,
 } from "./utils/attendancePeriod";
 
 interface AttendanceAppProps {
@@ -36,10 +37,13 @@ function AttendanceApp({
   onLogout,
 }: AttendanceAppProps) {
   const { t } = useTranslation();
-  
+  const today = new Date();
+
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [month, setMonth] = useState(11);
-  const [year, setYear] = useState(2026);
+  const [month, setMonth] = useState(today.getMonth());
+  const [year, setYear] = useState(today.getFullYear());
+  const [periodMode, setPeriodMode] =
+  useState<AttendancePeriodMode>("COMPANY");
   const [department, setDepartment] = useState("all");
   const [attendance, setAttendance] = useState<Record<string, string>>({});
   const [pendingChanges, setPendingChanges] = useState<
@@ -52,16 +56,14 @@ const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [isLoadingAttendance, setIsLoadingAttendance] = useState(false);
   const [attendanceError, setAttendanceError] = useState("");
+
   const attendancePeriod = getAttendancePeriod(
-  "CALENDAR",
+  periodMode,
   year,
   month
 );
   const loadDepartments = async () => {
     const data = await getDepartments();
-
-
-    
 
     setDepartments(data);
 };
@@ -260,6 +262,23 @@ useEffect(() => {
   setYear(newYear);
 };
   
+  const handlePeriodModeChange = (
+  newMode: AttendancePeriodMode
+): boolean => {
+  if (isSaving) {
+    setSaveMessage(t("tools.savingInProgress"));
+    return false;
+  }
+
+  if (Object.keys(pendingChanges).length > 0) {
+    setSaveMessage(t("tools.saveBeforeChangingMonth"));
+    return false;
+  }
+
+  setPeriodMode(newMode);
+  return true;
+  };
+  
   const handleDepartmentChange = (newDepartment: string) => {
     if (isSaving) {
   setSaveMessage(t("tools.savingInProgress"));
@@ -315,7 +334,9 @@ useEffect(() => {
         <AttendanceToolbar
           month={month}
           year={year}
-          startDate={attendancePeriod.startDate}
+          periodMode={periodMode}
+  onPeriodModeChange={handlePeriodModeChange}
+  startDate={attendancePeriod.startDate}
   endDate={attendancePeriod.endDate}
           department={department}
           attendance={attendance}
