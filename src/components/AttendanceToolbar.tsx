@@ -76,9 +76,6 @@ return (
       {/* LEFT: ATTENDANCE PERIOD SETTINGS */}
       <div className="flex-1 min-w-0 xl:pr-4">
 
-        {/* Title + period toggle */}
-        <div className="flex  items-center justify-between gap-x-5 gap-y-3">
-
           {/* Calendar icon and title */}
           <div className="flex items-center gap-3">
 
@@ -112,7 +109,59 @@ return (
             
 
           </div>
+        
+        <div className="flex justify-between w-full gap-x-2">
+          {/* Selected period information */}
+<div className="flex  w-[400px] items-center gap-4 rounded-3xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-50/70 px-4 py-1">
 
+  {/* Check icon */}
+  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-white">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  </div>
+
+  {/* Period details */}
+  <div className="flex w-full">
+    
+
+    <p className="mt-1 text-xl font-bold tracking-tight text-gray-900">
+      {new Date(`${startDate}T00:00:00Z`).toLocaleDateString(locale, {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      })}
+      {" – "}
+      {new Date(`${endDate}T00:00:00Z`).toLocaleDateString(locale, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      })}
+    </p>
+
+    <p className="mt-1 ml-auto text-lg font-medium text-gray-500">
+      {Math.round(
+        (
+          Date.parse(`${endDate}T00:00:00Z`) -
+          Date.parse(`${startDate}T00:00:00Z`)
+        ) / 86400000
+      ) + 1} {t("toolBar.days")}
+    </p>
+  </div>
+
+          </div>
+          
           {/* Compact period toggle */}
           <div className="inline-flex items-center rounded-full border-2 border-slate-200 bg-white p-1 shrink-0">
 
@@ -173,58 +222,8 @@ return (
             </button>
 
           </div>
-
         </div>
-{/* Selected period information */}
-<div className="flex items-center gap-4 rounded-3xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-emerald-50/70 px-4 py-2">
 
-  {/* Check icon */}
-  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-400 text-white">
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m5 12 4 4L19 6" />
-    </svg>
-  </div>
-
-  {/* Period details */}
-  <div className="flex w-full">
-    
-
-    <p className="mt-1 text-xl font-bold tracking-tight text-gray-900">
-      {new Date(`${startDate}T00:00:00`).toLocaleDateString(locale, {
-        month: "short",
-        day: "numeric",
-        timeZone: "UTC",
-      })}
-      {" – "}
-      {new Date(`${endDate}T00:00:00`).toLocaleDateString(locale, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        timeZone: "UTC",
-      })}
-    </p>
-
-    <p className="mt-1 ml-auto text-lg font-medium text-gray-500">
-      {Math.round(
-        (
-          Date.parse(`${endDate}T00:00:00Z`) -
-          Date.parse(`${startDate}T00:00:00Z`)
-        ) / 86400000
-      ) + 1} {t("toolBar.days")}
-    </p>
-  </div>
-
-</div>
         {/* Month, year and department selectors */}
         <div className="flex flex-wrap items-end gap-3 mt-4 ml-1">
 

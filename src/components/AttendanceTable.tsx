@@ -282,7 +282,7 @@ const handleAttendanceBlur = (
   return (
     <th
       key={date}
-      className={`min-w-12 px-2 py-2 text-center border-b border-r ${
+      className={`min-w-8 px-2 py-2 text-center border-b border-r ${
         weekend
           ? "bg-red-300 text-red-950"
           : "bg-gray-100 text-gray-700"
@@ -296,9 +296,6 @@ const handleAttendanceBlur = (
         {getDayNumber(date)}
       </div>
 
-      <div className="text-xs uppercase">
-        {getMonthLabel(date)}
-      </div>
     </th>
   );
 })}

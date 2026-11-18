@@ -38,7 +38,6 @@ function AttendanceApp({
   onLogout,
 }: AttendanceAppProps) {
   const { t } = useTranslation();
-  const today = new Date();
 
   const [departments, setDepartments] = useState<Department[]>([]);
   const [periodMode, setPeriodMode] =
