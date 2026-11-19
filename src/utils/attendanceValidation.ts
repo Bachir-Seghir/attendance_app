@@ -18,14 +18,14 @@ export function isValidAttendanceValue(value: string): boolean {
   if (normalizedValue === "") return true;
 
    // Night shift: N6, N7, N8
-  if (/^N[6-8]$/.test(normalizedValue)) {
+  if (/^N(?:[1-9]|1[0-2])$/.test(normalizedValue)) {
     return true;
   }
 
   // Accept numbers between 0 and 24, including decimals
   if (/^\d+(\.\d+)?$/.test(normalizedValue)) {
     const hours = Number(normalizedValue);
-    return hours >= 0 && hours <= 14;
+    return hours >= 0 && hours <= 24;
   }
 
   // Accept only predefined attendance codes
@@ -56,7 +56,7 @@ export function validateAttendanceInput(
   if (/^\d+\.?$/.test(normalizedValue)) {
     const hours = Number(normalizedValue);
 
-    if (hours <= 14) return normalizedValue;
+    if (hours <= 24) return normalizedValue;
   }
 
   return null;

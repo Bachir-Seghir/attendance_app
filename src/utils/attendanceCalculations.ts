@@ -17,7 +17,7 @@ export function calculateDailyHours(
   const normalizedValue = value.trim().toUpperCase();
 // Night shift: N6, N7, N8
   // All hours count as overtime, regardless of the day.
-  if (/^N[6-8]$/.test(normalizedValue)) {
+  if (/^N(?:[1-9]|1[0-2])$/.test(normalizedValue)) {
     return {
       normalHours: 0,
       overtimeHours: Number(normalizedValue.substring(1)),
