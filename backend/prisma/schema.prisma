@@ -36,32 +36,32 @@ model User {
   password     String
   role         Role        @default(VISITOR)
   departmentId Int?
-  isActive     Boolean      @default(true)
+  isActive     Boolean     @default(true)
   department   Department? @relation(fields: [departmentId], references: [id])
   createdAt    DateTime    @default(now())
 }
 
 model Employee {
-  id           Int          @id @default(autoincrement())
-  name         String
-  departmentId Int
-  isActive     Boolean      @default(true)
-  attendance   Attendance[]
-  department   Department   @relation(fields: [departmentId], references: [id])
+  id             Int             @id @default(autoincrement())
+  name           String
+  departmentId   Int
+  isActive       Boolean         @default(true)
+  attendance     Attendance[]
+  department     Department      @relation(fields: [departmentId], references: [id])
   crTransactions CRTransaction[]
-  createdAt    DateTime     @default(now())
+  createdAt      DateTime        @default(now())
 }
 
 model Attendance {
-  id         Int      @id @default(autoincrement())
-  employeeId Int
-  date       DateTime
-  value      String
-  createdAt  DateTime @default(now())
+  id             Int                  @id @default(autoincrement())
+  employeeId     Int
+  date           DateTime
+  value          String
+  createdAt      DateTime             @default(now())
   crTransactions CRTransaction[]
-  updatedAt  DateTime @updatedAt
-
-  employee Employee @relation(fields: [employeeId], references: [id])
+  updatedAt      DateTime             @updatedAt
+  intervals      AttendanceInterval[]
+  employee       Employee             @relation(fields: [employeeId], references: [id])
 
   @@unique([employeeId, date])
   @@index([date])
@@ -82,4 +82,19 @@ model CRTransaction {
 
   @@unique([attendanceId])
   @@index([employeeId, date])
+}
+
+model AttendanceInterval {
+  id           String   @id @default(cuid())
+  attendanceId Int
+  groupId      String   @default(cuid())
+  startMinute  Int
+  endMinute    Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@index([attendanceId])
+  @@index([groupId])
 }

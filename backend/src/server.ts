@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { splitAttendanceInterval } from "./utils/split-attendance-interval.js";
+
 import cors from "cors";
 import dotenv from "dotenv";
 import prisma from "./lib/prisma.js";
@@ -13,6 +16,8 @@ import {
   type AuthenticatedRequest,
 } from "./middleware/auth.js";
 import usersRoutes from "./routes/users.js";
+
+
 
 const ATTENDANCE_CODES = [
   "R",
@@ -852,15 +857,18 @@ app.get("/api/attendance", authenticateToken, async (req, res) => {
     }
 
     // Exclusive end boundary: midnight after the requested end date.
-    const endExclusive = new Date(endDate);
-    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+    const queryStart = new Date(startDate);
+queryStart.setUTCDate(queryStart.getUTCDate() - 1);
+
+const queryEndExclusive = new Date(endDate);
+queryEndExclusive.setUTCDate(queryEndExclusive.getUTCDate() + 2);
 
     const attendance = await prisma.attendance.findMany({
       where: {
         date: {
-          gte: startDate,
-          lt: endExclusive,
-        },
+  gte: queryStart,
+  lt: queryEndExclusive,
+},
         ...(user.role === Role.ATTENDANCE_OFFICER
           ? {
               employee: {
@@ -870,8 +878,13 @@ app.get("/api/attendance", authenticateToken, async (req, res) => {
           : {}),
       },
       include: {
-        employee: true,
-      },
+  employee: true,
+  intervals: {
+    orderBy: {
+      startMinute: "asc",
+    },
+  },
+},
       orderBy: {
         date: "asc",
       },
@@ -1098,6 +1111,725 @@ if (value.trim() !== "" && !isValidAttendanceValue(value)) {
   });
 }
 });
+
+
+app.post(
+  "/api/attendance/intervals/batch",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER),
+  async (req, res) => {
+    try {
+      const { changes } = req.body;
+
+      if (!Array.isArray(changes) || changes.length === 0) {
+        res.status(400).json({
+          status: "error",
+          message: "A non-empty changes array is required.",
+        });
+        return;
+      }
+
+      const validatedChanges: {
+        employeeId: number;
+        date: Date;
+        intervals: {
+          groupId: string;
+          startMinute: number;
+          endMinute: number;
+        }[];
+      }[] = [];
+
+      const changedDays = new Set<string>();
+
+      // Validate the complete request before writing anything.
+      for (const change of changes) {
+        const employeeId = Number(change?.employeeId);
+        const date = parseAttendanceDate(change?.date);
+
+        if (
+          !Number.isInteger(employeeId) ||
+          employeeId <= 0 ||
+          !date ||
+          !Array.isArray(change.intervals)
+        ) {
+          res.status(400).json({
+            status: "error",
+            message: "Invalid employee, date, or intervals.",
+          });
+          return;
+        }
+
+        const dayKey = `${employeeId}-${change.date}`;
+
+        if (changedDays.has(dayKey)) {
+          res.status(400).json({
+            status: "error",
+            message: `Duplicate attendance day: ${dayKey}`,
+          });
+          return;
+        }
+
+        changedDays.add(dayKey);
+
+        const permissionError = await checkAttendanceWriteAccess(
+          req,
+          employeeId,
+          date
+        );
+
+        if (permissionError) {
+          res.status(403).json({
+            status: "error",
+            message: permissionError,
+          });
+          return;
+        }
+
+        const intervals = change.intervals.map((interval: any) => ({
+          groupId: interval?.groupId,
+          startMinute: interval?.startMinute,
+          endMinute: interval?.endMinute,
+        }));
+
+        for (const interval of intervals) {
+          if (
+            typeof interval.groupId !== "string" ||
+            !interval.groupId.trim() ||
+            interval.groupId.length > 100 ||
+            !Number.isInteger(interval.startMinute) ||
+            !Number.isInteger(interval.endMinute) ||
+            interval.startMinute < 0 ||
+            interval.endMinute > 1440 ||
+            interval.startMinute >= interval.endMinute
+          ) {
+            res.status(400).json({
+              status: "error",
+              message: "Invalid interval. Times must be between 00:00 and 24:00.",
+            });
+            return;
+          }
+        }
+
+        // Reject overlapping intervals within the same employee/day.
+        const sortedIntervals = [...intervals].sort(
+          (a, b) => a.startMinute - b.startMinute
+        );
+
+        for (let i = 1; i < sortedIntervals.length; i++) {
+          if (
+            sortedIntervals[i].startMinute <
+            sortedIntervals[i - 1].endMinute
+          ) {
+            res.status(400).json({
+              status: "error",
+              message: `Overlapping intervals for employee ${employeeId} on ${change.date}.`,
+            });
+            return;
+          }
+        }
+
+        validatedChanges.push({
+          employeeId,
+          date,
+          intervals,
+        });
+      }
+
+      // Save all days atomically.
+      await prisma.$transaction(async (tx) => {
+        for (const change of validatedChanges) {
+          const attendance = await tx.attendance.upsert({
+            where: {
+              employeeId_date: {
+                employeeId: change.employeeId,
+                date: change.date,
+              },
+            },
+            update: {
+              value: "",
+            },
+            create: {
+              employeeId: change.employeeId,
+              date: change.date,
+              value: "",
+            },
+          });
+
+          // Replace the intervals for this specific day.
+          await tx.attendanceInterval.deleteMany({
+            where: {
+              attendanceId: attendance.id,
+            },
+          });
+
+          if (change.intervals.length > 0) {
+            await tx.attendanceInterval.createMany({
+              data: change.intervals.map((interval) => ({
+                attendanceId: attendance.id,
+                groupId: interval.groupId,
+                startMinute: interval.startMinute,
+                endMinute: interval.endMinute,
+              })),
+            });
+          }
+        }
+      });
+
+      res.json({
+        status: "success",
+        message: "Attendance intervals saved successfully.",
+        savedCount: validatedChanges.length,
+      });
+    } catch (error) {
+      console.error("Failed to save attendance intervals:", error);
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to save attendance intervals.",
+      });
+    }
+  }
+);
+
+
+app.post(
+  "/api/attendance/intervals",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER),
+  async (req, res) => {
+    try {
+      const employeeId = Number(req.body.employeeId);
+      const { date, startMinute, endMinute } = req.body;
+
+      // 1. Validate employee.
+      if (!Number.isInteger(employeeId) || employeeId <= 0) {
+        res.status(400).json({
+          status: "error",
+          message: "Invalid employee ID.",
+        });
+        return;
+      }
+
+      // 2. Validate date.
+      const parsedDate = parseAttendanceDate(date);
+
+      if (!parsedDate) {
+        res.status(400).json({
+          status: "error",
+          message: "Invalid attendance date.",
+        });
+        return;
+      }
+
+      // 3. Generate a unique ID for the logical interval.
+      const groupId = randomUUID();
+
+      // 4. Split the interval into daily segments.
+      const segments = splitAttendanceInterval({
+        date,
+        startMinute,
+        endMinute,
+        groupId,
+      });
+
+      // 5. Check permission for every affected day.
+      for (const segment of segments) {
+        const segmentDate = parseAttendanceDate(segment.date)!;
+
+        const permissionError = await checkAttendanceWriteAccess(
+          req,
+          employeeId,
+          segmentDate
+        );
+
+        if (permissionError) {
+          res.status(403).json({
+            status: "error",
+            message: permissionError,
+          });
+          return;
+        }
+      }
+
+      // 6. Check for overlapping intervals.
+      const result = await prisma.$transaction(
+  async (tx) => {
+    // 1. Find existing intervals on the affected dates.
+    const existingIntervals = await tx.attendanceInterval.findMany({
+      where: {
+        attendance: {
+          employeeId,
+          date: {
+            in: segments.map(
+              (segment) => parseAttendanceDate(segment.date)!
+            ),
+          },
+        },
+      },
+    });
+
+    // 2. Check for overlaps.
+    const hasOverlap = segments.some((segment) =>
+      existingIntervals.some(
+        (existing) =>
+          existing.startMinute < segment.endMinute &&
+          existing.endMinute > segment.startMinute
+      )
+    );
+
+    if (hasOverlap) {
+      return {
+        hasOverlap: true as const,
+        data: [],
+      };
+    }
+
+    // 3. Save all segments.
+    const savedSegments = [];
+
+    for (const segment of segments) {
+      const segmentDate = parseAttendanceDate(segment.date)!;
+
+      const attendance = await tx.attendance.upsert({
+        where: {
+          employeeId_date: {
+            employeeId,
+            date: segmentDate,
+          },
+        },
+        update: {},
+        create: {
+          employeeId,
+          date: segmentDate,
+          value: "",
+        },
+      });
+
+      const savedInterval = await tx.attendanceInterval.create({
+        data: {
+          attendanceId: attendance.id,
+          groupId: segment.groupId,
+          startMinute: segment.startMinute,
+          endMinute: segment.endMinute,
+        },
+      });
+
+      savedSegments.push({
+        ...savedInterval,
+        date: segment.date,
+      });
+    }
+
+    return {
+      hasOverlap: false as const,
+      data: savedSegments,
+    };
+  },
+  {
+    isolationLevel: "Serializable",
+  }
+);
+
+// 4. Handle overlap response.
+if (result.hasOverlap) {
+  res.status(409).json({
+    status: "error",
+    message: "This interval overlaps with existing attendance.",
+  });
+  return;
+}
+
+// 5. Return successful response.
+res.status(201).json({
+  status: "success",
+  message: "Attendance interval saved successfully.",
+  data: result.data,
+});
+
+      // 7. Save all segments in one transaction.
+      const savedSegments = await prisma.$transaction(async (tx) => {
+        const results = [];
+
+        for (const segment of segments) {
+          const attendance = await tx.attendance.upsert({
+            where: {
+              employeeId_date: {
+                employeeId,
+                date: parseAttendanceDate(segment.date)!,
+              },
+            },
+            update: {},
+            create: {
+              employeeId,
+              date: parseAttendanceDate(segment.date)!,
+              value: "",
+            },
+          });
+
+          const savedInterval = await tx.attendanceInterval.create({
+            data: {
+              attendanceId: attendance.id,
+              groupId: segment.groupId,
+              startMinute: segment.startMinute,
+              endMinute: segment.endMinute,
+            },
+          });
+
+          results.push({
+            ...savedInterval,
+            date: segment.date,
+          });
+        }
+
+        return results;
+      });
+
+      res.status(201).json({
+        status: "success",
+        message: "Attendance interval saved successfully.",
+        data: savedSegments,
+      });
+    } catch (error) {
+  console.error("Failed to save attendance interval:", error);
+
+  // Prisma serialization conflict.
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2034"
+  ) {
+    res.status(409).json({
+      status: "error",
+      message: "A concurrent attendance update occurred. Please retry.",
+    });
+    return;
+  }
+
+  res.status(500).json({
+    status: "error",
+    message: "Failed to save attendance interval.",
+  });
+}
+  }
+);
+
+app.put(
+  "/api/attendance/intervals/:groupId",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER),
+  async (req, res) => {
+    try {
+      const { date, startMinute, endMinute } = req.body;
+      //* 1. Validate group ID.
+const groupId = req.params.groupId;
+
+if (typeof groupId !== "string" || groupId.length === 0 || groupId.length > 100) {
+  res.status(400).json({
+    status: "error",
+    message: "Invalid interval group ID.",
+  });
+  return;
+}
+
+      // 2. Find all daily segments belonging to this interval.
+      const existingGroup = await prisma.attendanceInterval.findMany({
+        where: { groupId },
+        include: {
+          attendance: {
+            select: {
+              employeeId: true,
+              date: true,
+            },
+          },
+        },
+      });
+
+      if (existingGroup.length === 0) {
+        res.status(404).json({
+          status: "error",
+          message: "Attendance interval not found.",
+        });
+        return;
+      }
+
+      const employeeId = existingGroup[0].attendance.employeeId;
+
+      // Ensure all segments belong to the same employee.
+      if (
+        existingGroup.some(
+          (interval) => interval.attendance.employeeId !== employeeId
+        )
+      ) {
+        res.status(409).json({
+          status: "error",
+          message: "Invalid attendance interval group.",
+        });
+        return;
+      }
+
+      // 3. Validate the new date.
+      const parsedDate = parseAttendanceDate(date);
+
+      if (!parsedDate) {
+        res.status(400).json({
+          status: "error",
+          message: "Invalid attendance date.",
+        });
+        return;
+      }
+
+      // 4. Generate the new daily segments using the SAME groupId.
+      let segments;
+
+      try {
+        segments = splitAttendanceInterval({
+          date,
+          startMinute,
+          endMinute,
+          groupId,
+        });
+      } catch (error) {
+        res.status(400).json({
+          status: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Invalid attendance interval.",
+        });
+        return;
+      }
+
+      // 5. Check permission for every old segment.
+      for (const interval of existingGroup) {
+        const permissionError = await checkAttendanceWriteAccess(
+          req,
+          employeeId,
+          interval.attendance.date
+        );
+
+        if (permissionError) {
+          res.status(403).json({
+            status: "error",
+            message: permissionError,
+          });
+          return;
+        }
+      }
+
+      // 6. Check permission for every new segment.
+      for (const segment of segments) {
+        const permissionError = await checkAttendanceWriteAccess(
+          req,
+          employeeId,
+          parseAttendanceDate(segment.date)!
+        );
+
+        if (permissionError) {
+          res.status(403).json({
+            status: "error",
+            message: permissionError,
+          });
+          return;
+        }
+      }
+
+      // 7. Replace the old segments transactionally.
+      const result = await prisma.$transaction(
+        async (tx) => {
+          // Exclude the current group when checking overlaps.
+          const existingIntervals = await tx.attendanceInterval.findMany({
+            where: {
+              groupId: { not: groupId },
+              attendance: {
+                employeeId,
+                date: {
+                  in: segments.map(
+                    (segment) => parseAttendanceDate(segment.date)!
+                  ),
+                },
+              },
+            },
+          });
+
+          const hasOverlap = segments.some((segment) =>
+            existingIntervals.some(
+              (existing) =>
+                existing.startMinute < segment.endMinute &&
+                existing.endMinute > segment.startMinute
+            )
+          );
+
+          if (hasOverlap) {
+            return { hasOverlap: true as const, data: [] };
+          }
+
+          // Delete all previous segments.
+          await tx.attendanceInterval.deleteMany({
+            where: { groupId },
+          });
+
+          // Create the new segments.
+          const savedSegments = [];
+
+          for (const segment of segments) {
+            const segmentDate = parseAttendanceDate(segment.date)!;
+
+            const attendance = await tx.attendance.upsert({
+              where: {
+                employeeId_date: {
+                  employeeId,
+                  date: segmentDate,
+                },
+              },
+              update: {},
+              create: {
+                employeeId,
+                date: segmentDate,
+                value: "",
+              },
+            });
+
+            const savedInterval = await tx.attendanceInterval.create({
+              data: {
+                attendanceId: attendance.id,
+                groupId,
+                startMinute: segment.startMinute,
+                endMinute: segment.endMinute,
+              },
+            });
+
+            savedSegments.push({
+              ...savedInterval,
+              date: segment.date,
+            });
+          }
+
+          return {
+            hasOverlap: false as const,
+            data: savedSegments,
+          };
+        },
+        {
+          isolationLevel: "Serializable",
+        }
+      );
+
+      if (result.hasOverlap) {
+        res.status(409).json({
+          status: "error",
+          message: "This interval overlaps with existing attendance.",
+        });
+        return;
+      }
+
+      res.json({
+        status: "success",
+        message: "Attendance interval updated successfully.",
+        data: result.data,
+      });
+    } catch (error) {
+      console.error("Failed to update attendance interval:", error);
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to update attendance interval.",
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/attendance/intervals/:groupId",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.ATTENDANCE_OFFICER),
+  async (req, res) => {
+    try {
+      //* 1. Validate group ID.
+const groupId = req.params.groupId;
+
+if (typeof groupId !== "string" || groupId.length === 0 || groupId.length > 100) {
+  res.status(400).json({
+    status: "error",
+    message: "Invalid interval group ID.",
+  });
+  return;
+}
+
+      // 2. Find all segments belonging to this interval.
+      const existingGroup = await prisma.attendanceInterval.findMany({
+        where: { groupId },
+        include: {
+          attendance: {
+            select: {
+              employeeId: true,
+              date: true,
+            },
+          },
+        },
+      });
+
+      if (existingGroup.length === 0) {
+        res.status(404).json({
+          status: "error",
+          message: "Attendance interval not found.",
+        });
+        return;
+      }
+
+      const employeeId = existingGroup[0].attendance.employeeId;
+
+      if (
+        existingGroup.some(
+          (interval) => interval.attendance.employeeId !== employeeId
+        )
+      ) {
+        res.status(409).json({
+          status: "error",
+          message: "Invalid attendance interval group.",
+        });
+        return;
+      }
+
+      // 3. Check permission for every affected day.
+      for (const interval of existingGroup) {
+        const permissionError = await checkAttendanceWriteAccess(
+          req,
+          employeeId,
+          interval.attendance.date
+        );
+
+        if (permissionError) {
+          res.status(403).json({
+            status: "error",
+            message: permissionError,
+          });
+          return;
+        }
+      }
+
+      // 4. Delete all segments in one transaction.
+      const result = await prisma.$transaction(async (tx) => {
+        return tx.attendanceInterval.deleteMany({
+          where: { groupId },
+        });
+      });
+
+      res.json({
+        status: "success",
+        message: "Attendance interval deleted successfully.",
+        deletedCount: result.count,
+      });
+    } catch (error) {
+      console.error("Failed to delete attendance interval:", error);
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to delete attendance interval.",
+      });
+    }
+  }
+);
 
 // Start server
 const PORT = process.env.PORT || 3000;
