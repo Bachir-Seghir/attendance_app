@@ -17,7 +17,11 @@ import {
 } from "./middleware/auth.js";
 import usersRoutes from "./routes/users.js";
 
-
+import {
+  getAttendancePeriodForDate,
+  getAttendancePeriod,
+  getAttendancePeriodLockDate,
+} from "./utils/attendance-period.js";
 
 const ATTENDANCE_CODES = [
   "R",
@@ -84,6 +88,34 @@ function getAttendanceDeadline(date: Date): Date {
   );
 }
 
+
+function isImmediatelyPreviousPeriod(
+  periodStart: Date,
+  periodEnd: Date,
+  now: Date
+): boolean {
+  const currentPeriod = getAttendancePeriodForDate(now);
+
+  const previousPeriodEnd = new Date(
+    currentPeriod.startDate.getTime() - 24 * 60 * 60 * 1000
+  );
+
+  const previousPeriodStart = new Date(
+    Date.UTC(
+      previousPeriodEnd.getUTCFullYear(),
+      previousPeriodEnd.getUTCMonth() - 1,
+      21
+    )
+  );
+
+  return (
+    periodStart.getTime() === previousPeriodStart.getTime() &&
+    periodEnd.getTime() === previousPeriodEnd.getTime()
+  );
+}
+
+
+
 async function checkAttendanceWriteAccess(
   req: ExpressRequest,
   employeeId: number,
@@ -106,27 +138,72 @@ async function checkAttendanceWriteAccess(
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
     select: {
-    departmentId: true,
-    isActive: true,
-},
+      departmentId: true,
+      isActive: true,
+    },
   });
 
   if (!employee) {
     return "Employee not found.";
   }
-if (!employee.isActive) {
+
+  if (!employee.isActive) {
     return "Cannot modify attendance for an inactive employee.";
-}
+  }
+
   if (employee.departmentId !== user.departmentId) {
     return "You can only modify attendance for your assigned department.";
   }
 
-  if (new Date() > getAttendanceDeadline(date)) {
-    return "The attendance editing deadline has passed.";
+  // Identify the attendance period containing this date.
+  const { startDate, endDate } = getAttendancePeriodForDate(date);
+
+  // Look up the period configuration.
+  const period = await prisma.attendancePeriod.findUnique({
+    where: {
+      startDate_endDate: {
+        startDate,
+        endDate,
+      },
+    },
+    select: {
+      previousPeriodUnlocked: true,
+    },
+  });
+
+  const now = new Date();
+  const lockDate = getAttendancePeriodLockDate(endDate);
+
+  // Before the automatic lock date, attendance remains editable.
+  if (now < lockDate) {
+    return null;
   }
 
-  return null;
+  // Only the immediately previous period can be manually unlocked.
+  const isPreviousPeriod = isImmediatelyPreviousPeriod(
+    startDate,
+    endDate,
+    now
+  );
+
+  if (isPreviousPeriod && period?.previousPeriodUnlocked) {
+    return null;
+  }
+
+  return "This attendance period is locked. Contact your manager if it needs to be reopened.";
 }
+
+
+function getPreviousAttendancePeriod(now = new Date()) {
+  const currentPeriod = getAttendancePeriodForDate(now);
+
+  const previousPeriodEnd = new Date(
+    currentPeriod.startDate.getTime() - 24 * 60 * 60 * 1000
+  );
+
+  return getAttendancePeriodForDate(previousPeriodEnd);
+}
+
 
 dotenv.config();
 
@@ -1830,6 +1907,92 @@ if (typeof groupId !== "string" || groupId.length === 0 || groupId.length > 100)
     }
   }
 );
+
+
+app.get(
+  "/api/attendance-period/previous",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.MANAGER),
+  async (req, res) => {
+    try {
+      const { startDate, endDate } = getPreviousAttendancePeriod();
+
+      const period = await prisma.attendancePeriod.findUnique({
+        where: {
+          startDate_endDate: {
+            startDate,
+            endDate,
+          },
+        },
+      });
+
+      res.json({
+        status: "success",
+        period: {
+          startDate,
+          endDate,
+          previousPeriodUnlocked: period?.previousPeriodUnlocked ?? false,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching previous attendance period:", error);
+      res.status(500).json({
+        message: "Failed to fetch attendance period.",
+      });
+    }
+  }
+);
+
+
+app.patch(
+  "/api/attendance-period/previous",
+  authenticateToken,
+  authorizeRoles(Role.SUPER_ADMIN, Role.MANAGER),
+  async (req, res) => {
+    try {
+      const { unlocked } = req.body;
+
+      if (typeof unlocked !== "boolean") {
+        return res.status(400).json({
+          message: "The unlocked field must be a boolean.",
+        });
+      }
+
+      const { startDate, endDate } = getPreviousAttendancePeriod();
+
+      const period = await prisma.attendancePeriod.upsert({
+        where: {
+          startDate_endDate: {
+            startDate,
+            endDate,
+          },
+        },
+        update: {
+          previousPeriodUnlocked: unlocked,
+        },
+        create: {
+          startDate,
+          endDate,
+          previousPeriodUnlocked: unlocked,
+        },
+      });
+
+      res.json({
+        status: "success",
+        message: unlocked
+          ? "Previous attendance period unlocked."
+          : "Previous attendance period locked.",
+        period,
+      });
+    } catch (error) {
+      console.error("Error updating attendance period:", error);
+      res.status(500).json({
+        message: "Failed to update attendance period.",
+      });
+    }
+  }
+);
+
 
 // Start server
 const PORT = process.env.PORT || 3000;

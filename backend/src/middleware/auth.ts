@@ -110,11 +110,12 @@ export function authorizeRoles(...allowedRoles: Role[]) {
     }
 
     // Super Admin always has full access.
-    if (req.user.role === Role.SUPER_ADMIN) {
+    if (req.user.role === Role.SUPER_ADMIN ) {
       next();
       return;
     }
 
+    
     if (!allowedRoles.includes(req.user.role)) {
       res.status(403).json({
         status: "error",

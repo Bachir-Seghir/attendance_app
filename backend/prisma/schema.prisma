@@ -98,3 +98,42 @@ model AttendanceInterval {
   @@index([attendanceId])
   @@index([groupId])
 }
+
+model AttendancePeriod {
+  id                     Int       @id @default(autoincrement())
+  startDate              DateTime  @db.Date
+  endDate                DateTime  @db.Date
+  previousPeriodUnlocked Boolean   @default(false)
+  holidaysConfirmedAt    DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  holidayOverrides PeriodHolidayOverride[]
+
+  @@unique([startDate, endDate])
+  @@index([startDate, endDate])
+}
+
+model PublicHoliday {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @unique @db.Date
+  name        String
+  source      String?
+  isConfirmed Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PeriodHolidayOverride {
+  id        Int      @id @default(autoincrement())
+  periodId  Int
+  date      DateTime @db.Date
+  isHoliday Boolean
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  period AttendancePeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, date])
+  @@index([date])
+}
