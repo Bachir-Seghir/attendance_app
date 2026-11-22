@@ -1,480 +1,663 @@
-import { useRef } from "react";
-import type { Employee } from "../services/api";
-import { calculatePeriodTotals } from "../utils/attendanceCalculations";
 
+import { useMemo, useState } from "react";
+import type { Employee, AttendanceRecord } from "../services/api";
 import {
-  type DateKey,
-  getDatesBetween,
-  getAttendanceKey,
-  isWeekendDate,
-} from "../utils/attendancePeriod";
-import {
-	validateAttendanceInput,
-	isValidAttendanceValue,
-} from "../utils/attendanceValidation";
-import { ATTENDANCE_CODES } from "../utils/attendanceValidation";
+  calculateDailyIntervalTotals,
+  formatMinutesAsHours,
+} from "../utils/attendanceCalculations";
+import type { DateKey } from "../utils/attendancePeriod";
 
-interface AttendanceTableProps {
-	startDate: DateKey;
-  endDate: DateKey;
-	department: string;
-	employees: Employee[];
-	attendance: Record<string, string>;
-	hasUnsavedChanges: boolean;
-	isSaving: boolean;
-	saveMessage: string;
-	isLoadingEmployees: boolean;
-	employeesError: string;
-	isLoadingAttendance: boolean;
-	attendanceError: string;
-	canEditAttendance: boolean;
-	onAttendanceChange: (
-  employeeId: number,
-  date: DateKey,
-  value: string
-) => void;
-	onSaveAttendance: () => void;
+interface LogicalInterval {
+  groupId: string;
+  employeeId: number;
+  date: string;
+  startMinute: number;
+  endMinute: number;
+  duration: number;
 }
 
-function AttendanceTable({
-	department,
-	employees,
-	attendance,
-	onAttendanceChange,
-	hasUnsavedChanges,
-	isSaving,
-	saveMessage,
-	onSaveAttendance,
-	isLoadingEmployees,
-	employeesError,
-	isLoadingAttendance,
-	attendanceError,
-	canEditAttendance,
-  startDate,
-  endDate,
-}: AttendanceTableProps) {
-	const dates = getDatesBetween(startDate, endDate);
+interface AttendanceTableProps {
+  startDate: string;
+  endDate: string;
+  department: string;
+  employees: Employee[];
+  attendance: AttendanceRecord[];
 
-const getWeekdayInitial = (date: DateKey) => {
-  return new Date(`${date}T00:00:00Z`)
-    .toLocaleDateString("fr-FR", {
-      weekday: "long",
-      timeZone: "UTC",
-    })
-    .charAt(0)
-    .toUpperCase();
-};
+  hasUnsavedChanges: boolean;
+  isSaving: boolean;
+  saveMessage: string;
 
-const getDayNumber = (date: DateKey) => {
-  return Number(date.slice(8, 10));
-};
+  isLoadingEmployees: boolean;
+  employeesError: string;
+  isLoadingAttendance: boolean;
+  attendanceError: string;
 
-const getMonthLabel = (date: DateKey) => {
-  return new Date(`${date}T00:00:00Z`)
-    .toLocaleDateString("fr-FR", {
-      month: "short",
-      timeZone: "UTC",
-    });
-};
+  canEditAttendance: boolean;
 
-	const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  onCreateInterval: (
+    employeeId: number,
+    date: string,
+    startMinute: number,
+    endMinute: number
+  ) => void;
 
-	// Update an attendance cell
-	const handleAttendanceChange = (
-  employeeId: number,
-  date: DateKey,
-  value: string
-) => {
-  if (!canEditAttendance) return;
+  onUpdateInterval: (
+    groupId: string,
+    employeeId: number,
+    date: string,
+    startMinute: number,
+    endMinute: number
+  ) => void;
 
-  const validatedValue = validateAttendanceInput(value);
+  onDeleteInterval: (groupId: string) => void;
+  onSaveAttendance: () => void;
+}
 
-  if (validatedValue === null) return;
+function addDays(date: string, days: number): string {
+  const result = new Date(`${date.slice(0, 10)}T00:00:00.000Z`);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().slice(0, 10);
+}
 
-  onAttendanceChange(employeeId, date, validatedValue);
-};
+function getDates(startDate: string, endDate: string): string[] {
+  const dates: string[] = [];
 
-const handleAttendanceBlur = (
-  employeeId: number,
-  date: DateKey
-) => {
-  if (!canEditAttendance) return;
-
-  const key = getAttendanceKey(employeeId, date);
-  const value = attendance[key] ?? "";
-
-  if (value !== "" && !isValidAttendanceValue(value)) {
-    onAttendanceChange(employeeId, date, "");
-  }
-};
-
-
-	// Filter employees by department
-	const filteredEmployees =
-    (department === "all"
-        ? employees
-        : employees.filter((employee) => employee.department.name === department)
-    ).filter((employee) => {
-        if (employee.isActive) return true;
-
-        return dates.some((date) => {
-  const key = getAttendanceKey(employee.id, date);
-
-  return (attendance[key] ?? "").trim() !== "";
-});
-    });
-
-	const handleCellNavigation = (
-  event: React.KeyboardEvent<HTMLInputElement>,
-  employeeIndex: number,
-  dateIndex: number
-) => {
-  const employeeCount = filteredEmployees.length;
-
-  let nextEmployeeIndex = employeeIndex;
-  let nextDateIndex = dateIndex;
-
-  switch (event.key) {
-    case "ArrowLeft":
-      nextDateIndex--;
-      break;
-
-    case "ArrowRight":
-      nextDateIndex++;
-      break;
-
-    case "ArrowUp":
-      nextEmployeeIndex--;
-      break;
-
-    case "ArrowDown":
-      nextEmployeeIndex++;
-      break;
-
-    default:
-      return;
-  }
-
-  event.preventDefault();
-
-  if (
-    nextDateIndex < 0 ||
-    nextDateIndex >= dates.length
+  for (
+    let current = startDate.slice(0, 10);
+    current <= endDate.slice(0, 10);
+    current = addDays(current, 1)
   ) {
-    return;
+    dates.push(current);
   }
 
-  if (
-    event.key === "ArrowUp" ||
-    event.key === "ArrowDown"
-  ) {
-    const direction = event.key === "ArrowUp" ? -1 : 1;
+  return dates;
+}
 
-    while (
-      nextEmployeeIndex >= 0 &&
-      nextEmployeeIndex < employeeCount &&
-      !filteredEmployees[nextEmployeeIndex].isActive
-    ) {
-      nextEmployeeIndex += direction;
+function formatTime(minute: number): string {
+  const normalized = minute % 1440;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function parseTime(value: string): number | null {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+
+  if (!match) return null;
+
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function buildLogicalIntervals(
+  attendance: AttendanceRecord[]
+): LogicalInterval[] {
+  const groups = new Map<
+    string,
+    {
+      employeeId: number;
+      segments: {
+        date: string;
+        startMinute: number;
+        endMinute: number;
+      }[];
+    }
+  >();
+
+  for (const record of attendance) {
+    for (const interval of record.intervals ?? []) {
+      const group = groups.get(interval.groupId) ?? {
+        employeeId: record.employeeId,
+        segments: [],
+      };
+
+      group.segments.push({
+        date: record.date.slice(0, 10),
+        startMinute: interval.startMinute,
+        endMinute: interval.endMinute,
+      });
+
+      groups.set(interval.groupId, group);
     }
   }
 
-  if (
-    nextEmployeeIndex < 0 ||
-    nextEmployeeIndex >= employeeCount
-  ) {
-    return;
+  return Array.from(groups.entries()).map(([groupId, group]) => {
+    const segments = [...group.segments].sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
+
+    const first = segments[0];
+    const last = segments[segments.length - 1];
+
+    const dayDifference =
+      (Date.parse(`${last.date}T00:00:00.000Z`) -
+        Date.parse(`${first.date}T00:00:00.000Z`)) /
+      86400000;
+
+    const startMinute = first.startMinute;
+    const endMinute = dayDifference * 1440 + last.endMinute;
+
+    return {
+      groupId,
+      employeeId: group.employeeId,
+      date: first.date,
+      startMinute,
+      endMinute,
+      duration: segments.reduce(
+        (total, segment) =>
+          total + segment.endMinute - segment.startMinute,
+        0
+      ),
+    };
+  });
+}
+
+function AttendanceTable({
+  startDate,
+  endDate,
+  department,
+  employees,
+  attendance,
+  hasUnsavedChanges,
+  isSaving,
+  saveMessage,
+  isLoadingEmployees,
+  employeesError,
+  isLoadingAttendance,
+  attendanceError,
+  canEditAttendance,
+  onCreateInterval,
+  onUpdateInterval,
+  onDeleteInterval,
+  onSaveAttendance,
+}: AttendanceTableProps) {
+  const dates = useMemo(
+    () => getDates(startDate, endDate),
+    [startDate, endDate]
+  );
+
+  const logicalIntervals = useMemo(
+    () => buildLogicalIntervals(attendance),
+    [attendance]
+  );
+
+  const [activeCell, setActiveCell] = useState<string | null>(null);
+  const [quickValues, setQuickValues] = useState<Record<string, string>>({});
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+
+  const [startTime, setStartTime] = useState("08:00");
+  const [endTime, setEndTime] = useState("16:00");
+
+  const filteredEmployees =
+    department === "all"
+      ? employees
+      : employees.filter(
+          (employee) => employee.department?.name === department
+        );
+
+  const getCellKey = (employeeId: number, date: string) =>
+    `${employeeId}-${date}`;
+
+  const getCellIntervals = (employeeId: number, date: string) =>
+    logicalIntervals.filter(
+      (interval) =>
+        interval.employeeId === employeeId &&
+        interval.date === date
+    );
+
+  const getDailyTotals = (employeeId: number, date: string) => {
+    const record = attendance.find(
+      (item) =>
+        item.employeeId === employeeId &&
+        item.date.slice(0, 10) === date
+    );
+
+    return calculateDailyIntervalTotals(
+      record?.intervals ?? [],
+      date as DateKey
+    );
+  };
+
+  const getEmployeeTotals = (employeeId: number) => {
+    return dates.reduce(
+      (totals, date) => {
+        const daily = getDailyTotals(employeeId, date);
+
+        totals.r1 += daily.r1Minutes;
+        totals.r2 += daily.r2Minutes;
+        totals.r3 += daily.r3Minutes;
+
+        return totals;
+      },
+      { r1: 0, r2: 0, r3: 0 }
+    );
+  };
+
+  const openNewInterval = (employeeId: number, date: string) => {
+    setActiveCell(getCellKey(employeeId, date));
+    setEditingGroupId(null);
+    setStartTime("08:00");
+    setEndTime("16:00");
+  };
+
+  const openEditInterval = (interval: LogicalInterval) => {
+    setActiveCell(getCellKey(interval.employeeId, interval.date));
+    setEditingGroupId(interval.groupId);
+    setStartTime(formatTime(interval.startMinute));
+    setEndTime(formatTime(interval.endMinute));
+  };
+
+  const saveIntervalDraft = (
+    employeeId: number,
+    date: string
+  ) => {
+    const start = parseTime(startTime);
+    const end = parseTime(endTime);
+
+    if (start === null || end === null) {
+      window.alert("Invalid time. Use HH:MM.");
+      return;
+    }
+
+    // An end time earlier than or equal to the start
+    // means the interval finishes on the following day.
+    const absoluteEnd = end <= start ? end + 1440 : end;
+
+    if (absoluteEnd - start <= 0) return;
+
+    if (editingGroupId) {
+      onUpdateInterval(
+        editingGroupId,
+        employeeId,
+        date,
+        start,
+        absoluteEnd
+      );
+    } else {
+      onCreateInterval(employeeId, date, start, absoluteEnd);
+    }
+
+    setEditingGroupId(null);
+    setActiveCell(null);
+  };
+
+  const handleQuickEntry = (
+    employeeId: number,
+    date: string
+  ) => {
+    const key = getCellKey(employeeId, date);
+    const hours = Number(quickValues[key]);
+
+    if (!Number.isInteger(hours) || hours < 1 || hours > 8) {
+      return;
+    }
+
+    onCreateInterval(
+      employeeId,
+      date,
+      480,
+      480 + hours * 60
+    );
+
+    setQuickValues((previous) => ({
+      ...previous,
+      [key]: "",
+    }));
+
+    setActiveCell(null);
+  };
+
+  const isWeekend = (date: string) => {
+    const day = new Date(
+      `${date}T00:00:00.000Z`
+    ).getUTCDay();
+
+    return day === 5 || day === 6;
+  };
+
+  if (isLoadingEmployees || isLoadingAttendance) {
+    return <p className="p-6">Loading attendance...</p>;
   }
 
-  const nextEmployee = filteredEmployees[nextEmployeeIndex];
-  const nextDate = dates[nextDateIndex];
-
-  const nextKey = getAttendanceKey(
-    nextEmployee.id,
-    nextDate
-  );
-
-  inputRefs.current[nextKey]?.focus();
-};
-
-	return (
-		<section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-			{/* Table title */}
-			<div className="px-5 py-4 border-b border-gray-200">
-				<div className="flex items-center justify-between gap-4">
-					<h2 className="text-lg font-semibold text-gray-800">
-						Monthly Attendance
-					</h2>
-					{canEditAttendance && (
-						<button
-							type="button"
-							onClick={onSaveAttendance}
-							disabled={isSaving || !hasUnsavedChanges}
-							className={`px-4 py-2  hover:cursor-pointer disabled:bg-gray-400 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors ${hasUnsavedChanges && !isSaving ? "save-reminder" : ""
-								}`}
-						>
-							{isSaving ? "Sauvgarde En Cours..." : "Sauvgarder l'état Actuel"}
-						</button>
-					)}
-				</div>
-				{saveMessage && (
-					<p
-						className={`mt-2 text-sm font-medium ${
-							saveMessage.includes("successfully")
-								? "text-green-600"
-								: "text-red-600"
-						}`}
-					>
-						{saveMessage}
-					</p>
-				)}
-
-				<p className="text-sm text-gray-500 mt-1">
-					Enter the working hours for each employee.
-				</p>
-
-				<div className="mt-4 flex flex-wrap items-center gap-2">
-					<span className="text-xs font-semibold text-gray-600 mr-1">
-						Les Valeurs possible :
-					</span>
-
-					<span className="px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs font-semibold">
-						0–14 Hours
-					</span>
-
-					{Object.entries(ATTENDANCE_CODES).map(([code, label]) => (
-						<div
-							key={code}
-							title={label}
-							className="flex items-center gap-1.5 px-2 py-1 rounded bg-gray-100 border border-gray-200"
-						>
-							<span className="text-xs font-bold text-gray-800">{code}</span>
-
-							<span className="text-xs text-gray-500">{label}</span>
-						</div>
-					))}
-				</div>
-			</div>
-
-			{/* Attendance table */}
-			<div className="overflow-x-auto">
-				<table className="w-full border-collapse text-sm">
-					<thead className="bg-gray-100">
-						<tr>
-							<th className="sticky left-0 z-20 bg-gray-100 min-w-30 px-2 py-3 text-left font-semibold text-gray-700 border-b border-r">
-								Nom & Prénom
-							</th>
-
-							<th className="min-w-22 px-2 py-3 text-left font-semibold text-gray-700 border-b border-r">
-								Affect.
-							</th>
-							<th className="min-w-12 px-3 py-3 text-center font-semibold text-gray-700 border-b border-r bg-emerald-50">
-								HN
-							</th>
-
-							<th className="min-w-12 px-3 py-3 text-center font-semibold text-gray-700 border-b border-r bg-orange-50">
-								HS
-							</th>
-							{/* Day headers */}
-							{dates.map((date) => {
-  const weekend = isWeekendDate(date);
+  if (employeesError || attendanceError) {
+    return (
+      <div className="p-6 text-red-600">
+        {employeesError || attendanceError}
+      </div>
+    );
+  }
 
   return (
-    <th
-      key={date}
-      className={`min-w-8 px-2 py-2 text-center border-b border-r ${
-        weekend
-          ? "bg-red-300 text-red-950"
-          : "bg-gray-100 text-gray-700"
-      }`}
-    >
-      <div className="text-xs">
-        {getWeekdayInitial(date)}
+    <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-lg">
+            Monthly Attendance
+          </h2>
+          <p className="text-sm text-gray-500">
+            {startDate} — {endDate}
+          </p>
+        </div>
+
+        {canEditAttendance && (
+          <button
+            type="button"
+            onClick={onSaveAttendance}
+            disabled={!hasUnsavedChanges || isSaving}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white disabled:opacity-40"
+          >
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        )}
       </div>
 
-      <div className="font-bold">
-        {getDayNumber(date)}
+      {saveMessage && (
+        <p className="px-5 py-2 text-sm text-gray-600">
+          {saveMessage}
+        </p>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="border-collapse text-sm min-w-max w-full">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="sticky left-0 z-20 bg-gray-100 px-3 py-3 text-left min-w-48">
+                Employee
+              </th>
+              <th className="px-3 py-3 min-w-16">HN</th>
+              <th className="px-3 py-3 min-w-16">HS</th>
+              <th className="px-3 py-3 min-w-16">CR</th>
+
+              {dates.map((date) => {
+                const weekday = new Date(
+                  `${date}T00:00:00.000Z`
+                ).toLocaleDateString("fr-FR", {
+                  weekday: "short",
+                  timeZone: "UTC",
+                });
+
+                return (
+                  <th
+                    key={date}
+                    className={`px-2 py-2 min-w-16 text-center ${
+                      isWeekend(date) ? "bg-red-300" : ""
+                    }`}
+                  >
+                    <div>{Number(date.slice(8, 10))}</div>
+                    <div className="text-xs font-normal">
+                      {weekday.charAt(0).toUpperCase()}
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+
+          <tbody>
+            {filteredEmployees.map((employee) => {
+              const totals = getEmployeeTotals(employee.id);
+
+              return (
+                <tr key={employee.id} className="border-t">
+                  <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium">
+                    {employee.name}
+                  </td>
+
+                  <td className="text-center font-semibold">
+                    {formatMinutesAsHours(totals.r1)}
+                  </td>
+
+                  <td className="text-center font-semibold">
+                    {formatMinutesAsHours(
+                      totals.r2 + totals.r3
+                    )}
+                  </td>
+
+                  <td className="text-center">—</td>
+
+                  {dates.map((date) => {
+                    const key = getCellKey(employee.id, date);
+                    const intervals = getCellIntervals(
+                      employee.id,
+                      date
+                    );
+
+                    const totalsForDay = getDailyTotals(
+                      employee.id,
+                      date
+                    );
+
+                    const isActive = activeCell === key;
+
+                    const quickValue = quickValues[key] ?? "";
+
+                    return (
+                      <td
+                        key={date}
+                        className={`border-l p-1 text-center align-top ${
+                          isWeekend(date) ? "bg-red-50" : ""
+                        }`}
+                        onBlur={(event) => {
+                          if (
+                            !event.currentTarget.contains(
+                              event.relatedTarget
+                            )
+                          ) {
+                            setActiveCell((current) =>
+                              current === key ? null : current
+                            );
+                          }
+                        }}
+                      >
+                        {!isActive ? (
+                          <div className="flex flex-col items-center gap-1">
+                            {intervals.length > 0 ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="font-semibold text-blue-700 hover:underline"
+                                  onClick={() =>
+                                    setActiveCell(key)
+                                  }
+                                >
+                                  {formatMinutesAsHours(
+                                    totalsForDay.totalMinutes
+                                  )}
+                                </button>
+                                <span className="text-xs text-gray-500">
+                                  {intervals.length} interval(s)
+                                </span>
+                              </>
+                            ) : canEditAttendance ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openNewInterval(
+                                    employee.id,
+                                    date
+                                  )
+                                }
+                                className="w-8 h-8 rounded border border-gray-300 hover:bg-blue-50"
+                              >
+                                +
+                              </button>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+
+                            {canEditAttendance &&
+                              intervals.length === 0 && (
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="8"
+                                  value={quickValue}
+                                  placeholder="h"
+                                  className="w-10 text-center text-xs border rounded"
+                                  onChange={(event) =>
+                                    setQuickValues((previous) => ({
+                                      ...previous,
+                                      [key]: event.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      handleQuickEntry(
+                                        employee.id,
+                                        date
+                                      );
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    if (quickValue) {
+                                      handleQuickEntry(
+                                        employee.id,
+                                        date
+                                      );
+                                    }
+                                  }}
+                                />
+                              )}
+                          </div>
+                        ) : (
+                          <div className="min-w-52 p-2 bg-white border rounded-lg shadow-sm space-y-2">
+                            <div className="flex justify-between items-center">
+                              <strong className="text-xs">
+                                {date}
+                              </strong>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setActiveCell(null)
+                                }
+                                className="text-gray-500"
+                              >
+                                ×
+                              </button>
+                            </div>
+
+                            {intervals.map((interval) => (
+                              <div
+                                key={interval.groupId}
+                                className="flex items-center justify-between gap-2 text-xs"
+                              >
+                                <span>
+                                  {formatTime(interval.startMinute)}
+                                  {" – "}
+                                  {formatTime(interval.endMinute)}
+                                  {interval.endMinute >= 1440
+                                    ? " (+1 day)"
+                                    : ""}
+                                </span>
+
+                                {canEditAttendance && (
+                                  <span className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      className="text-blue-600"
+                                      onClick={() =>
+                                        openEditInterval(interval)
+                                      }
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="text-red-600"
+                                      onClick={() =>
+                                        onDeleteInterval(
+                                          interval.groupId
+                                        )
+                                      }
+                                    >
+                                      Delete
+                                    </button>
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+
+                            <div className="text-xs text-gray-600 border-t pt-2">
+                              R1: {formatMinutesAsHours(totalsForDay.r1Minutes)}
+                              {" | "}
+                              R2: {formatMinutesAsHours(totalsForDay.r2Minutes)}
+                              {" | "}
+                              R3: {formatMinutesAsHours(totalsForDay.r3Minutes)}
+                            </div>
+
+                            {canEditAttendance && (
+                              <>
+                                <div className="flex gap-2">
+                                  <label className="flex-1 text-xs">
+                                    Start
+                                    <input
+                                      type="time"
+                                      value={startTime}
+                                      onChange={(event) =>
+                                        setStartTime(event.target.value)
+                                      }
+                                      className="w-full border rounded p-1"
+                                    />
+                                  </label>
+
+                                  <label className="flex-1 text-xs">
+                                    End
+                                    <input
+                                      type="time"
+                                      value={endTime}
+                                      onChange={(event) =>
+                                        setEndTime(event.target.value)
+                                      }
+                                      className="w-full border rounded p-1"
+                                    />
+                                  </label>
+                                </div>
+
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      saveIntervalDraft(
+                                        employee.id,
+                                        editingGroupId
+                                          ? logicalIntervals.find(
+                                              (item) =>
+                                                item.groupId === editingGroupId
+                                            )?.date ?? date
+                                          : date
+                                      )
+                                    }
+                                    className="flex-1 bg-blue-600 text-white rounded py-1"
+                                  >
+                                    {editingGroupId ? "Update" : "Add interval"}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingGroupId(null);
+                                      setActiveCell(null);
+                                    }}
+                                    className="px-2 border rounded"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-
-    </th>
+    </section>
   );
-})}
-						</tr>
-					</thead>
-
-					<tbody>
-						{isLoadingEmployees ? (
-							<tr>
-								<td
-									colSpan={dates.length + 4}
-									className="text-center py-10 text-gray-500"
-								>
-									Loading employees...
-								</td>
-							</tr>
-						) : employeesError ? (
-							<tr>
-								<td
-									colSpan={dates.length + 4}
-									className="text-center py-10 text-red-600"
-								>
-									{employeesError}
-								</td>
-							</tr>
-						) : isLoadingAttendance ? (
-    <tr>
-        <td
-            colSpan={dates.length + 4}
-            className="text-center py-10 text-gray-500"
-        >
-            Loading attendance...
-        </td>
-    </tr>
-) : attendanceError ? (
-    <tr>
-        <td
-            colSpan={dates.length + 4}
-            className="text-center py-10 text-red-600"
-        >
-            {attendanceError}
-        </td>
-    </tr>
-) : (
-    <>
-								{filteredEmployees.map((employee, employeeIndex) => {
-									const monthlyTotals = calculatePeriodTotals(
-  employee.id,
-  attendance,
-  dates
-);
-
-									return (
-										<tr
-											key={employee.id}
-											className={
-    employee.isActive
-        ? "hover:bg-blue-50 transition-colors"
-        : "bg-gray-100 text-gray-400"
-}
-										>
-											<td className={`sticky left-0 z-10 px-2 py-2 font-medium border-b border-r whitespace-nowrap ${
-    employee.isActive
-        ? "bg-white text-gray-800"
-        : "bg-gray-200 text-gray-500"
-}`}>
-												{employee.name}
-											</td>
-
-											<td className={`px-2 py-2 border-b border-r whitespace-nowrap ${
-    employee.isActive ? "text-gray-600" : "text-gray-400 bg-gray-100"
-}`}>
-												{employee.department.name}
-											</td>
-											<td className={`px-3 py-2 text-center font-semibold border-b border-r ${
-    employee.isActive
-        ? "text-emerald-700 bg-emerald-50"
-        : "text-gray-400 bg-gray-200"
-}`}>
-												{monthlyTotals.normalHours}
-											</td>
-
-											<td className={`px-3 py-2 text-center font-semibold border-b border-r ${
-    employee.isActive
-        ? "text-orange-700 bg-orange-50"
-        : "text-gray-400 bg-gray-200"
-}`}>
-												{monthlyTotals.overtimeHours}
-											</td>
-											{/* Attendance cells */}
-											{dates.map((date, dateIndex) => {
-  const weekend = isWeekendDate(date);
-
-  const key = getAttendanceKey(employee.id, date);
-
-  return (
-    <td
-      key={date}
-      className={`p-1 border-b border-r text-center ${
-        !employee.isActive
-          ? "bg-gray-200"
-          : weekend
-            ? "bg-red-100"
-            : "bg-white"
-      }`}
-    >
-      <input
-        disabled={!canEditAttendance || !employee.isActive}
-        onFocus={(event) => event.target.select()}
-        ref={(element) => {
-          inputRefs.current[key] = element;
-        }}
-        onKeyDown={(event) =>
-          handleCellNavigation(
-            event,
-            employeeIndex,
-            dateIndex
-          )
-        }
-        maxLength={5}
-        autoComplete="off"
-        type="text"
-        value={attendance[key] ?? ""}
-        onChange={(event) =>
-          handleAttendanceChange(
-            employee.id,
-            date,
-            event.target.value
-          )
-        }
-        onBlur={() =>
-          handleAttendanceBlur(employee.id, date)
-        }
-        className={`w-10 h-9 text-center rounded-md border outline-none ${
-          !employee.isActive
-            ? "bg-gray-200 text-gray-400 border-gray-200 cursor-not-allowed"
-            : weekend
-              ? "bg-red-300 text-red-950 border-gray-300"
-              : "bg-gray-100 text-gray-900 border-gray-300"
-        } ${
-          employee.isActive && canEditAttendance
-            ? "focus:border-blue-400 focus:ring-2 focus:ring-blue-400"
-            : ""
-        }`}
-      />
-    </td>
-  );
-})}
-										</tr>
-									);
-								})}
-
-								{/* Empty department message */}
-								{!isLoadingEmployees &&
-									!employeesError &&
-									filteredEmployees.length === 0 && (
-										<tr>
-											<td
-												colSpan={dates.length + 4}
-												className="text-center py-10 text-gray-500"
-											>
-												No employees found.
-											</td>
-										</tr>
-									)}
-							</>
-						)}
-					</tbody>
-				</table>
-			</div>
-
-			{/* Table footer */}
-			<div className="px-5 py-3 bg-gray-50 border-t border-gray-200">
-				<p className="text-xs text-gray-500">
-					Total employees: {filteredEmployees.length}
-				</p>
-			</div>
-		</section>
-	);
 }
 
 export default AttendanceTable;

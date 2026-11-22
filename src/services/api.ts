@@ -1,7 +1,12 @@
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
 const TOKEN_KEY = "attendance_token";
+
+// ============================================================
+// AUTH TOKEN
+// ============================================================
 
 export function getAuthToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -14,6 +19,10 @@ export function setAuthToken(token: string): void {
 export function clearAuthToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
+
+// ============================================================
+// API REQUEST
+// ============================================================
 
 export async function apiRequest<T>(
   endpoint: string,
@@ -59,31 +68,42 @@ export async function apiRequest<T>(
   }
 }
 
+// ============================================================
 // AUTHENTICATION
+// ============================================================
+
+export interface Department {
+  id: number;
+  name: string;
+}
 
 export interface AuthUser {
   id: number;
   name: string;
   email: string;
-  role: "SUPER_ADMIN" | "MANAGER" | "ATTENDANCE_OFFICER" | "VISITOR";
-  departmentId: number | null;
-}
-
-export type UserRole =
+  role:
     | "SUPER_ADMIN"
     | "MANAGER"
     | "ATTENDANCE_OFFICER"
     | "VISITOR";
+  departmentId: number | null;
+}
+
+export type UserRole =
+  | "SUPER_ADMIN"
+  | "MANAGER"
+  | "ATTENDANCE_OFFICER"
+  | "VISITOR";
 
 export interface ManagedUser {
-    id: number;
-    name: string;
-    email: string;
-    role: UserRole;
-    departmentId: number | null;
-    isActive: boolean;
-    createdAt: string;
-    department?: Department | null;
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+  departmentId: number | null;
+  isActive: boolean;
+  createdAt: string;
+  department?: Department | null;
 }
 
 interface LoginResponse {
@@ -110,7 +130,9 @@ export function logout(): void {
   clearAuthToken();
 }
 
+// ============================================================
 // EMPLOYEES
+// ============================================================
 
 export interface Employee {
   id: number;
@@ -125,34 +147,57 @@ export async function getEmployees(
   startDate?: string,
   endDate?: string
 ): Promise<Employee[]> {
-    const params = new URLSearchParams();
+  const params = new URLSearchParams();
 
-    params.set("includeInactive", String(includeInactive));
+  params.set("includeInactive", String(includeInactive));
 
-if (startDate && endDate) {
-  params.set("startDate", startDate);
-  params.set("endDate", endDate);
+  if (startDate && endDate) {
+    params.set("startDate", startDate);
+    params.set("endDate", endDate);
+  }
+
+  const query = params.toString();
+
+  const response = await apiRequest<{
+    status: string;
+    data: Employee[];
+  }>(`/employees${query ? `?${query}` : ""}`);
+
+  return response.data;
 }
 
-    const query = params.toString();
+// ============================================================
+// ATTENDANCE INTERVALS
+// ============================================================
 
-    const response = await apiRequest<{
-        status: string;
-        data: Employee[];
-    }>(`/employees${query ? `?${query}` : ""}`);
-
-    return response.data;
+export interface AttendanceInterval {
+  id: number;
+  attendanceId: number;
+  groupId: string;
+  startMinute: number;
+  endMinute: number;
 }
-
-// ATTENDANCE
 
 export interface AttendanceRecord {
   id: number;
   employeeId: number;
   date: string;
   value: string;
+  intervals: AttendanceInterval[];
+  employee?: Employee;
 }
 
+interface AttendanceResponse {
+  status: string;
+  data: AttendanceRecord[];
+}
+
+interface AttendanceIntervalResponse {
+  status: string;
+  data: AttendanceInterval[];
+}
+
+// GET ATTENDANCE
 
 export async function getAttendance(
   startDate: string,
@@ -163,14 +208,68 @@ export async function getAttendance(
     endDate,
   });
 
-  const response = await apiRequest<{
-    status: string;
-    data: AttendanceRecord[];
-  }>(`/attendance?${params.toString()}`);
+  const response = await apiRequest<AttendanceResponse>(
+    `/attendance?${params.toString()}`
+  );
 
   return response.data;
 }
 
+// CREATE INTERVAL
+
+export async function createAttendanceInterval(data: {
+  employeeId: number;
+  date: string;
+  startMinute: number;
+  endMinute: number;
+}): Promise<AttendanceInterval[]> {
+  const response = await apiRequest<AttendanceIntervalResponse>(
+    "/attendance/intervals",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+
+  return response.data;
+}
+
+// UPDATE INTERVAL
+
+export async function updateAttendanceInterval(
+  groupId: string,
+  data: {
+    employeeId: number;
+    date: string;
+    startMinute: number;
+    endMinute: number;
+  }
+): Promise<AttendanceInterval[]> {
+  const response = await apiRequest<AttendanceIntervalResponse>(
+    `/attendance/intervals/${groupId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }
+  );
+
+  return response.data;
+}
+
+// DELETE INTERVAL
+
+export async function deleteAttendanceInterval(
+  groupId: string
+): Promise<void> {
+  await apiRequest(`/attendance/intervals/${groupId}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================================
+// LEGACY ATTENDANCE FUNCTIONS
+// Keep temporarily for components still using the old model.
+// ============================================================
 
 export async function saveAttendance(
   employeeId: number,
@@ -214,76 +313,63 @@ export async function saveAttendanceBatch(
   });
 }
 
-
-export interface Department {
-    id: number;
-    name: string;
-}
-
-export async function getDepartments(): Promise<Department[]> {
-    const response = await apiRequest<{
-        status: string;
-        data: Department[];
-    }>("/departments");
-
-    return response.data;
-}
-
-//* USER MANAGEMENT *
+// ============================================================
+// USER MANAGEMENT
+// ============================================================
 
 export async function getUsers(): Promise<ManagedUser[]> {
-    const response = await apiRequest<{
-        status: string;
-        data: ManagedUser[];
-    }>("/users");
+  const response = await apiRequest<{
+    status: string;
+    data: ManagedUser[];
+  }>("/users");
 
-    return response.data;
+  return response.data;
 }
 
 export async function createUser(data: {
-    name: string;
-    email: string;
-    password: string;
-    role: UserRole;
-    departmentId: number | null;
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  departmentId: number | null;
 }): Promise<void> {
-    await apiRequest("/users", {
-        method: "POST",
-        body: JSON.stringify(data),
-    });
+  await apiRequest("/users", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function updateUser(
-    id: number,
-    data: {
-        name: string;
-        email: string;
-        role: UserRole;
-        departmentId: number | null;
-    }
+  id: number,
+  data: {
+    name: string;
+    email: string;
+    role: UserRole;
+    departmentId: number | null;
+  }
 ): Promise<void> {
-    await apiRequest(`/users/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-    });
+  await apiRequest(`/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function changeUserStatus(
-    id: number,
-    isActive: boolean
+  id: number,
+  isActive: boolean
 ): Promise<void> {
-    await apiRequest(`/users/${id}/status`, {
-        method: "PATCH",
-        body: JSON.stringify({ isActive }),
-    });
+  await apiRequest(`/users/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive }),
+  });
 }
 
 export async function resetUserPassword(
-    id: number,
-    password: string
+  id: number,
+  password: string
 ): Promise<void> {
-    await apiRequest(`/users/${id}/password`, {
-        method: "PATCH",
-        body: JSON.stringify({ password }),
-    });
+  await apiRequest(`/users/${id}/password`, {
+    method: "PATCH",
+    body: JSON.stringify({ password }),
+  });
 }

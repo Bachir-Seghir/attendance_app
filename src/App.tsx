@@ -4,7 +4,19 @@ import { useTranslation } from "react-i18next";
 import AppHeader from "./components/AppHeader";
 import AttendanceToolbar from "./components/AttendanceToolbar";
 import AttendanceTable from "./components/AttendanceTable";
-import { getDepartments,getEmployees, getAttendance, saveAttendanceBatch , type Employee, type AuthUser , type Department } from "./services/api";
+import {
+  getDepartments,
+  getEmployees,
+  getAttendance,
+  createAttendanceInterval,
+  updateAttendanceInterval,
+  deleteAttendanceInterval,
+  type AttendanceRecord,
+  type AttendanceInterval,
+  type Employee,
+  type AuthUser,
+  type Department,
+} from "./services/api";
 import { useAuth } from "./context/AuthContext";
 import LoginPage from "./components/LoginPage";
 import { getUserPermissions } from "./utils/permissions";
@@ -16,12 +28,32 @@ import excelIcon from "./assets/excel.svg";
 import { exportAttendanceExcel } from "./utils/exportAttendanceExcel";
 import {
   getAttendancePeriod,
-  getAttendanceKey,
-  normalizeDateKey,
   getDefaultAttendanceSelection,
   type AttendancePeriodMode,
 } from "./utils/attendancePeriod";
 
+type PendingIntervalOperation =
+  | {
+      type: "CREATE";
+      groupId: string;
+      employeeId: number;
+      date: string;
+      startMinute: number;
+      endMinute: number;
+    }
+  | {
+      type: "UPDATE";
+      groupId: string;
+      employeeId: number;
+      date: string;
+      startMinute: number;
+      endMinute: number;
+    }
+  | {
+      type: "DELETE";
+      groupId: string;
+  };
+    
 interface AttendanceAppProps {
   canEditAttendance: boolean;
   canViewAllDepartments: boolean;
@@ -50,9 +82,10 @@ const [initialSelection] = useState(() =>
 const [month, setMonth] = useState(initialSelection.month);
 const [year, setYear] = useState(initialSelection.year);
   const [department, setDepartment] = useState("all");
-  const [attendance, setAttendance] = useState<Record<string, string>>({});
-  const [pendingChanges, setPendingChanges] = useState<
-  Record<string, string>
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+
+const [pendingOperations, setPendingOperations] = useState<
+  Record<string, PendingIntervalOperation>
 >({});
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [isLoadingEmployees, setIsLoadingEmployees] = useState(true);
@@ -71,7 +104,8 @@ const [isSaving, setIsSaving] = useState(false);
     const data = await getDepartments();
 
     setDepartments(data);
-};
+  };
+  
   useEffect(() => {
     loadDepartments().catch(console.error);
   }, []);
@@ -127,42 +161,269 @@ useEffect(() => {
 }, [attendancePeriod.startDate, attendancePeriod.endDate]);
   
 useEffect(() => {
-  setIsLoadingAttendance(true);
-  setAttendanceError("");
+  let cancelled = false;
 
-  getAttendance(
-    attendancePeriod.startDate,
-    attendancePeriod.endDate
-  )
-    .then((data) => {
-      const attendanceData: Record<string, string> = {};
+  const loadAttendance = async () => {
+    setIsLoadingAttendance(true);
+    setAttendanceError("");
 
-      data.forEach((record) => {
-        const date = normalizeDateKey(record.date);
-        const key = getAttendanceKey(record.employeeId, date);
-
-        attendanceData[key] = record.value;
-      });
-
-      setAttendance(attendanceData);
-    })
-    .catch((error) => {
-      console.error("Failed to load attendance:", error);
-
-      setAttendanceError(
-        error instanceof Error
-          ? error.message
-          : t("tools.loading")
+    try {
+      const data = await getAttendance(
+        attendancePeriod.startDate,
+        attendancePeriod.endDate
       );
-    })
-    .finally(() => {
-      setIsLoadingAttendance(false);
-    });
+
+      if (!cancelled) {
+        setAttendance(data);
+      }
+    } catch (error) {
+      if (!cancelled) {
+        console.error("Failed to load attendance:", error);
+
+        setAttendanceError(
+          error instanceof Error
+            ? error.message
+            : t("tools.loading")
+        );
+      }
+    } finally {
+      if (!cancelled) {
+        setIsLoadingAttendance(false);
+      }
+    }
+  };
+
+  loadAttendance();
+
+  return () => {
+    cancelled = true;
+  };
 }, [
   attendancePeriod.startDate,
   attendancePeriod.endDate,
   t,
 ]);
+
+
+  const addDays = (date: string, days: number): string => {
+  const result = new Date(`${date.slice(0, 10)}T00:00:00.000Z`);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().slice(0, 10);
+};
+
+const buildIntervalSegments = (
+  employeeId: number,
+  date: string,
+  groupId: string,
+  startMinute: number,
+  endMinute: number
+): AttendanceRecord[] => {
+  const segments: AttendanceRecord[] = [];
+
+  let currentDate = date.slice(0, 10);
+  let currentMinute = startMinute;
+  let remainingMinutes = endMinute - startMinute;
+
+  while (remainingMinutes > 0) {
+    const duration = Math.min(remainingMinutes, 1440 - currentMinute);
+    const segmentEnd = currentMinute + duration;
+
+    segments.push({
+      id: 0,
+      employeeId,
+      date: currentDate,
+      value: "",
+      intervals: [
+        {
+          id: -Math.abs(
+            currentMinute + segmentEnd + segments.length + 1
+          ),
+          attendanceId: 0,
+          groupId,
+          startMinute: currentMinute,
+          endMinute: segmentEnd,
+        },
+      ],
+    });
+
+    remainingMinutes -= duration;
+    currentDate = addDays(currentDate, 1);
+    currentMinute = 0;
+  }
+
+  return segments;
+};
+  
+const handleCreateInterval = (
+  employeeId: number,
+  date: string,
+  startMinute: number,
+  endMinute: number
+) => {
+  if (!canEditAttendance) return;
+
+  const groupId = `draft-${crypto.randomUUID()}`;
+
+  const segments = buildIntervalSegments(
+    employeeId,
+    date,
+    groupId,
+    startMinute,
+    endMinute
+  );
+
+  setAttendance((previous) => {
+    const updated = [...previous];
+
+    segments.forEach((segment) => {
+      const existingIndex = updated.findIndex(
+        (record) =>
+          record.employeeId === employeeId &&
+          record.date.slice(0, 10) === segment.date
+      );
+
+      if (existingIndex >= 0) {
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          intervals: [
+            ...updated[existingIndex].intervals,
+            ...segment.intervals,
+          ],
+        };
+      } else {
+        updated.push(segment);
+      }
+    });
+
+    return updated;
+  });
+
+  setPendingOperations((previous) => ({
+    ...previous,
+    [groupId]: {
+      type: "CREATE",
+      groupId,
+      employeeId,
+      date: date.slice(0, 10),
+      startMinute,
+      endMinute,
+    },
+  }));
+
+  setSaveMessage("");
+};
+
+const handleUpdateInterval = (
+  groupId: string,
+  employeeId: number,
+  date: string,
+  startMinute: number,
+  endMinute: number
+) => {
+  if (!canEditAttendance) return;
+
+  const segments = buildIntervalSegments(
+    employeeId,
+    date,
+    groupId,
+    startMinute,
+    endMinute
+  );
+
+  setAttendance((previous) => {
+    const withoutOldGroup = previous.map((record) => ({
+      ...record,
+      intervals: record.intervals.filter(
+        (interval) => interval.groupId !== groupId
+      ),
+    }));
+
+    const updated = withoutOldGroup.filter(
+      (record) =>
+        record.intervals.length > 0 || record.value.trim() !== ""
+    );
+
+    segments.forEach((segment) => {
+      const existingIndex = updated.findIndex(
+        (record) =>
+          record.employeeId === employeeId &&
+          record.date.slice(0, 10) === segment.date
+      );
+
+      if (existingIndex >= 0) {
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          intervals: [
+            ...updated[existingIndex].intervals,
+            ...segment.intervals,
+          ],
+        };
+      } else {
+        updated.push(segment);
+      }
+    });
+
+    return updated;
+  });
+
+  setPendingOperations((previous) => {
+    const existing = previous[groupId];
+
+    return {
+      ...previous,
+      [groupId]: {
+        type: existing?.type === "CREATE" ? "CREATE" : "UPDATE",
+        groupId,
+        employeeId,
+        date: date.slice(0, 10),
+        startMinute,
+        endMinute,
+      },
+    };
+  });
+
+  setSaveMessage("");
+};
+
+const handleDeleteInterval = (groupId: string) => {
+  if (!canEditAttendance) return;
+
+  setAttendance((previous) =>
+    previous
+      .map((record) => ({
+        ...record,
+        intervals: record.intervals.filter(
+          (interval) => interval.groupId !== groupId
+        ),
+      }))
+      .filter(
+        (record) =>
+          record.intervals.length > 0 || record.value.trim() !== ""
+      )
+  );
+
+  setPendingOperations((previous) => {
+    const existing = previous[groupId];
+
+    // Deleting an interval that was never saved requires
+    // no request to the server.
+    if (existing?.type === "CREATE") {
+      const remaining = { ...previous };
+      delete remaining[groupId];
+      return remaining;
+    }
+
+    return {
+      ...previous,
+      [groupId]: {
+        type: "DELETE",
+        groupId,
+      },
+    };
+  });
+
+  setSaveMessage("");
+};
   
  const handleAttendanceChange = (
   employeeId: number,
@@ -187,49 +448,63 @@ useEffect(() => {
 };
   
   const handleSaveAttendance = async () => {
-    if (!canEditAttendance) return;
-    const changesToSave = { ...pendingChanges };
+  if (!canEditAttendance || isSaving) return;
 
-  const changes = Object.entries(changesToSave).map(
-  ([key, value]) => {
-    const separatorIndex = key.indexOf("-");
+  const operations = Object.values(pendingOperations);
 
-    const employeeId = Number(key.slice(0, separatorIndex));
-    const date = key.slice(separatorIndex + 1);
-
-    return {
-      employeeId,
-      date,
-      value,
-    };
-  }
-);
-
-  if (changes.length === 0) {
+  if (operations.length === 0) {
     setSaveMessage(t("tools.noChangesToSave"));
     return;
   }
 
+  setIsSaving(true);
+  setSaveMessage("");
+
   try {
-    setIsSaving(true);
-    setSaveMessage("");
+    for (const operation of operations) {
+      switch (operation.type) {
+        case "CREATE":
+          await createAttendanceInterval({
+            employeeId: operation.employeeId,
+            date: operation.date,
+            startMinute: operation.startMinute,
+            endMinute: operation.endMinute,
+          });
+          break;
 
-    await saveAttendanceBatch(changes);
+        case "UPDATE":
+          await updateAttendanceInterval(operation.groupId, {
+            employeeId: operation.employeeId,
+            date: operation.date,
+            startMinute: operation.startMinute,
+            endMinute: operation.endMinute,
+          });
+          break;
 
-    setPendingChanges((current) => {
-  const remaining = { ...current };
+        case "DELETE":
+          await deleteAttendanceInterval(operation.groupId);
+          break;
+      }
 
-  Object.entries(changesToSave).forEach(([key, savedValue]) => {
-    if (remaining[key] === savedValue) {
-      delete remaining[key];
+      // Remove each successful operation immediately.
+      // This prevents duplicate creation if a later operation fails.
+      setPendingOperations((previous) => {
+        const remaining = { ...previous };
+        delete remaining[operation.groupId];
+        return remaining;
+      });
     }
-  });
 
-  return remaining;
-});
+    const refreshedAttendance = await getAttendance(
+      attendancePeriod.startDate,
+      attendancePeriod.endDate
+    );
+
+    setAttendance(refreshedAttendance);
     setSaveMessage(t("tools.attendanceSaved"));
   } catch (error) {
-    console.error(error);
+    console.error("Failed to save attendance:", error);
+
     setSaveMessage(
       error instanceof Error
         ? error.message
@@ -238,7 +513,7 @@ useEffect(() => {
   } finally {
     setIsSaving(false);
   }
-  };
+};
   
   const handleMonthChange = (newMonth: number) => {
     if (isSaving) {
@@ -246,7 +521,7 @@ useEffect(() => {
   return;
     }
     
-  if (Object.keys(pendingChanges).length > 0) {
+  if (Object.keys(pendingOperations).length > 0) {
     setSaveMessage(t("tools.saveBeforeChangingMonth"));
     return;
   }
@@ -259,7 +534,7 @@ useEffect(() => {
   setSaveMessage(t("tools.savingInProgress"));
   return;
 }
-  if (Object.keys(pendingChanges).length > 0) {
+  if (Object.keys(pendingOperations).length > 0) {
     setSaveMessage(t("tools.saveBeforeChangingYear"));
     return;
   }
@@ -275,7 +550,7 @@ useEffect(() => {
     return false;
   }
 
-  if (Object.keys(pendingChanges).length > 0) {
+  if (Object.keys(pendingOperations).length > 0) {
     setSaveMessage(t("tools.saveBeforeChangingMonth"));
     return false;
   }
@@ -295,7 +570,7 @@ useEffect(() => {
   setSaveMessage(t("tools.savingInProgress"));
   return;
 }
-  if (Object.keys(pendingChanges).length > 0) {
+  if (Object.keys(pendingOperations).length > 0) {
     setSaveMessage(
       t("tools.saveBeforeChangingDepartment")
     );
@@ -361,22 +636,24 @@ onYearChange={handleYearChange}
         />
 
         <AttendanceTable
-          startDate={attendancePeriod.startDate}
+  startDate={attendancePeriod.startDate}
   endDate={attendancePeriod.endDate}
-          department={department}
-          attendance={attendance}
-          employees={employees}
-          onAttendanceChange={handleAttendanceChange}
-          onSaveAttendance={handleSaveAttendance}
-          hasUnsavedChanges={Object.keys(pendingChanges).length > 0}
-          isSaving={isSaving}
-          saveMessage={saveMessage}
-          isLoadingEmployees={isLoadingEmployees}
-          employeesError={employeesError}
-          isLoadingAttendance={isLoadingAttendance}
-          attendanceError={attendanceError}
-          canEditAttendance={canEditAttendance}
-        />
+  department={department}
+  attendance={attendance}
+  employees={employees}
+  onCreateInterval={handleCreateInterval}
+  onUpdateInterval={handleUpdateInterval}
+  onDeleteInterval={handleDeleteInterval}
+  onSaveAttendance={handleSaveAttendance}
+  hasUnsavedChanges={Object.keys(pendingOperations).length > 0}
+  isSaving={isSaving}
+  saveMessage={saveMessage}
+  isLoadingEmployees={isLoadingEmployees}
+  employeesError={employeesError}
+  isLoadingAttendance={isLoadingAttendance}
+  attendanceError={attendanceError}
+  canEditAttendance={canEditAttendance}
+/>
       </main>
     </div>
   );
