@@ -425,28 +425,6 @@ const handleDeleteInterval = (groupId: string) => {
   setSaveMessage("");
 };
   
- const handleAttendanceChange = (
-  employeeId: number,
-  date: string,
-  value: string
-) => {
-  if (!canEditAttendance) return;
-
-  setSaveMessage("");
-
-  const key = getAttendanceKey(employeeId, date);
-
-  setAttendance((previous) => ({
-    ...previous,
-    [key]: value,
-  }));
-
-  setPendingChanges((previous) => ({
-    ...previous,
-    [key]: value,
-  }));
-};
-  
   const handleSaveAttendance = async () => {
   if (!canEditAttendance || isSaving) return;
 

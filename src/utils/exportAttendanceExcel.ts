@@ -1,19 +1,22 @@
-
 import ExcelJS from "exceljs";
-import type { Employee } from "../services/api";
+import type {
+  Employee,
+  AttendanceRecord,
+} from "../services/api";
+
 import {
-  calculatePeriodTotals,
-} from "./attendanceCalculations";
+  calculateDailyIntervalTotals,
+} from "./attendanceCalculation";
+
 import {
   type DateKey,
   getDatesBetween,
-  getAttendanceKey,
   isWeekendDate,
 } from "./attendancePeriod";
 
 interface ExportAttendanceOptions {
   employees: Employee[];
-  attendance: Record<string, string>;
+  attendance: AttendanceRecord[];
   startDate: DateKey;
   endDate: DateKey;
   department: string;
@@ -126,30 +129,55 @@ export async function exportAttendanceExcel({
   };
 
   // Employee attendance rows
-  for (const employee of filteredEmployees) {
-    const dailyValues = dates.map(
-      (date) =>
-        attendance[getAttendanceKey(employee.id, date)] ?? ""
+  // Employee attendance rows
+const attendanceMap = new Map(
+  attendance.map((record) => [
+    `${record.employeeId}-${record.date.slice(0, 10)}`,
+    record,
+  ])
+);
+
+for (const employee of filteredEmployees) {
+  let r1Minutes = 0;
+  let r2Minutes = 0;
+  let r3Minutes = 0;
+
+  const dailyValues = dates.map((date) => {
+    const record = attendanceMap.get(
+      `${employee.id}-${date}`
     );
 
-    const totals = calculatePeriodTotals(
-      employee.id,
-      attendance,
-      dates
+    const dailyTotals = calculateDailyIntervalTotals(
+      record?.intervals ?? [],
+      date
     );
 
-    const row = worksheet.addRow([
-      employee.name,
-      employee.department?.name ?? "",
-      totals.normalHours,
-      totals.overtimeHours,
-      totals.normalHours + totals.overtimeHours,
-      ...dailyValues,
-    ]);
+    r1Minutes += dailyTotals.r1Minutes;
+    r2Minutes += dailyTotals.r2Minutes;
+    r3Minutes += dailyTotals.r3Minutes;
 
-    row.height = 30;
-  }
+    const totalMinutes =
+      dailyTotals.r1Minutes +
+      dailyTotals.r2Minutes +
+      dailyTotals.r3Minutes;
 
+    return totalMinutes > 0 ? totalMinutes / 60 : "";
+  });
+
+  const normalHours = r1Minutes / 60;
+  const overtimeHours = (r2Minutes + r3Minutes) / 60;
+
+  const row = worksheet.addRow([
+    employee.name,
+    employee.department?.name ?? "",
+    normalHours,
+    overtimeHours,
+    normalHours + overtimeHours,
+    ...dailyValues,
+  ]);
+
+  row.height = 30;
+}
   // Column widths
   worksheet.getColumn(1).width = 20;
   worksheet.getColumn(2).width = 20;

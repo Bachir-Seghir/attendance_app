@@ -77,6 +77,15 @@ export interface Department {
   name: string;
 }
 
+export async function getDepartments(): Promise<Department[]> {
+  const response = await apiRequest<{
+    status: string;
+    data: Department[];
+  }>("/departments");
+
+  return response.data;
+}
+
 export interface AuthUser {
   id: number;
   name: string;

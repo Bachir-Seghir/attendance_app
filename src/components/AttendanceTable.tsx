@@ -4,7 +4,7 @@ import type { Employee, AttendanceRecord } from "../services/api";
 import {
   calculateDailyIntervalTotals,
   formatMinutesAsHours,
-} from "../utils/attendanceCalculations";
+} from "../utils/attendanceCalculation";
 import type { DateKey } from "../utils/attendancePeriod";
 
 interface LogicalInterval {
@@ -198,13 +198,61 @@ function AttendanceTable({
   const getCellKey = (employeeId: number, date: string) =>
     `${employeeId}-${date}`;
 
-  const getCellIntervals = (employeeId: number, date: string) =>
-    logicalIntervals.filter(
-      (interval) =>
-        interval.employeeId === employeeId &&
-        interval.date === date
+ const getCellIntervals = (employeeId: number, date: string) =>
+  logicalIntervals.filter((interval) => {
+    if (interval.employeeId !== employeeId) return false;
+
+    const intervalStartDate = new Date(
+      `${interval.date}T00:00:00.000Z`
     );
 
+    const cellDate = new Date(`${date}T00:00:00.000Z`);
+
+    const dayOffset = Math.round(
+      (cellDate.getTime() - intervalStartDate.getTime()) /
+        86_400_000
+    );
+
+    // Minutes of this calendar day relative to the interval's start date
+    const dayStart = dayOffset * 1440;
+    const dayEnd = dayStart + 1440;
+
+    // Check whether the interval overlaps this day
+    return (
+      interval.startMinute < dayEnd &&
+      interval.endMinute > dayStart
+    );
+  });
+
+  const getIntervalSegmentForDate = (
+  interval: (typeof logicalIntervals)[number],
+  date: string
+) => {
+  const intervalStartDate = new Date(
+    `${interval.date}T00:00:00.000Z`
+  );
+
+  const cellDate = new Date(`${date}T00:00:00.000Z`);
+
+  const dayOffset = Math.round(
+    (cellDate.getTime() - intervalStartDate.getTime()) /
+      86_400_000
+  );
+
+  const dayStart = dayOffset * 1440;
+  const dayEnd = dayStart + 1440;
+
+  return {
+    startMinute:
+      Math.max(interval.startMinute, dayStart) - dayStart,
+    endMinute:
+      Math.min(interval.endMinute, dayEnd) - dayStart,
+  };
+};
+
+const formatSegmentTime = (minute: number) =>
+  minute === 1440 ? "24:00" : formatTime(minute);
+  
   const getDailyTotals = (employeeId: number, date: string) => {
     const record = attendance.find(
       (item) =>
@@ -536,46 +584,44 @@ function AttendanceTable({
                               </button>
                             </div>
 
-                            {intervals.map((interval) => (
-                              <div
-                                key={interval.groupId}
-                                className="flex items-center justify-between gap-2 text-xs"
-                              >
-                                <span>
-                                  {formatTime(interval.startMinute)}
-                                  {" – "}
-                                  {formatTime(interval.endMinute)}
-                                  {interval.endMinute >= 1440
-                                    ? " (+1 day)"
-                                    : ""}
-                                </span>
+                            {intervals.map((interval) => {
+  const segment = getIntervalSegmentForDate(interval, date);
 
-                                {canEditAttendance && (
-                                  <span className="flex gap-1">
-                                    <button
-                                      type="button"
-                                      className="text-blue-600"
-                                      onClick={() =>
-                                        openEditInterval(interval)
-                                      }
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="text-red-600"
-                                      onClick={() =>
-                                        onDeleteInterval(
-                                          interval.groupId
-                                        )
-                                      }
-                                    >
-                                      Delete
-                                    </button>
-                                  </span>
-                                )}
-                              </div>
-                            ))}
+  return (
+    <div
+      key={interval.groupId}
+      className="flex items-center justify-between gap-2 text-xs"
+    >
+      <span>
+        {formatSegmentTime(segment.startMinute)}
+        {" – "}
+        {formatSegmentTime(segment.endMinute)}
+      </span>
+
+      {canEditAttendance && (
+        <span className="flex gap-1">
+          <button
+            type="button"
+            className="text-blue-600"
+            onClick={() => openEditInterval(interval)}
+          >
+            Edit
+          </button>
+
+          <button
+            type="button"
+            className="text-red-600"
+            onClick={() =>
+              onDeleteInterval(interval.groupId)
+            }
+          >
+            Delete
+          </button>
+        </span>
+      )}
+    </div>
+  );
+})}
 
                             <div className="text-xs text-gray-600 border-t pt-2">
                               R1: {formatMinutesAsHours(totalsForDay.r1Minutes)}

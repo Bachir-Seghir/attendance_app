@@ -1369,6 +1369,7 @@ app.post(
 );
 
 
+
 app.post(
   "/api/attendance/intervals",
   authenticateToken,
@@ -1428,168 +1429,127 @@ app.post(
         }
       }
 
-      // 6. Check for overlapping intervals.
+      // 6. Check overlaps and save all segments in one transaction.
       const result = await prisma.$transaction(
-  async (tx) => {
-    // 1. Find existing intervals on the affected dates.
-    const existingIntervals = await tx.attendanceInterval.findMany({
-      where: {
-        attendance: {
-          employeeId,
-          date: {
-            in: segments.map(
-              (segment) => parseAttendanceDate(segment.date)!
-            ),
-          },
-        },
-      },
-    });
-
-    // 2. Check for overlaps.
-    const hasOverlap = segments.some((segment) =>
-      existingIntervals.some(
-        (existing) =>
-          existing.startMinute < segment.endMinute &&
-          existing.endMinute > segment.startMinute
-      )
-    );
-
-    if (hasOverlap) {
-      return {
-        hasOverlap: true as const,
-        data: [],
-      };
-    }
-
-    // 3. Save all segments.
-    const savedSegments = [];
-
-    for (const segment of segments) {
-      const segmentDate = parseAttendanceDate(segment.date)!;
-
-      const attendance = await tx.attendance.upsert({
-        where: {
-          employeeId_date: {
-            employeeId,
-            date: segmentDate,
-          },
-        },
-        update: {},
-        create: {
-          employeeId,
-          date: segmentDate,
-          value: "",
-        },
-      });
-
-      const savedInterval = await tx.attendanceInterval.create({
-        data: {
-          attendanceId: attendance.id,
-          groupId: segment.groupId,
-          startMinute: segment.startMinute,
-          endMinute: segment.endMinute,
-        },
-      });
-
-      savedSegments.push({
-        ...savedInterval,
-        date: segment.date,
-      });
-    }
-
-    return {
-      hasOverlap: false as const,
-      data: savedSegments,
-    };
-  },
-  {
-    isolationLevel: "Serializable",
-  }
-);
-
-// 4. Handle overlap response.
-if (result.hasOverlap) {
-  res.status(409).json({
-    status: "error",
-    message: "This interval overlaps with existing attendance.",
-  });
-  return;
-}
-
-// 5. Return successful response.
-res.status(201).json({
-  status: "success",
-  message: "Attendance interval saved successfully.",
-  data: result.data,
-});
-
-      // 7. Save all segments in one transaction.
-      const savedSegments = await prisma.$transaction(async (tx) => {
-        const results = [];
-
-        for (const segment of segments) {
-          const attendance = await tx.attendance.upsert({
+        async (tx) => {
+          // Find existing intervals on the affected dates.
+          const existingIntervals = await tx.attendanceInterval.findMany({
             where: {
-              employeeId_date: {
+              attendance: {
                 employeeId,
-                date: parseAttendanceDate(segment.date)!,
+                date: {
+                  in: segments.map(
+                    (segment) => parseAttendanceDate(segment.date)!
+                  ),
+                },
               },
             },
-            update: {},
-            create: {
-              employeeId,
-              date: parseAttendanceDate(segment.date)!,
-              value: "",
-            },
           });
 
-          const savedInterval = await tx.attendanceInterval.create({
-            data: {
-              attendanceId: attendance.id,
-              groupId: segment.groupId,
-              startMinute: segment.startMinute,
-              endMinute: segment.endMinute,
-            },
-          });
+          // Check for overlaps.
+          const hasOverlap = segments.some((segment) =>
+            existingIntervals.some(
+              (existing) =>
+                existing.startMinute < segment.endMinute &&
+                existing.endMinute > segment.startMinute
+            )
+          );
 
-          results.push({
-            ...savedInterval,
-            date: segment.date,
-          });
+          if (hasOverlap) {
+            return {
+              hasOverlap: true as const,
+              data: [],
+            };
+          }
+
+          // Save each segment exactly once.
+          const savedSegments = [];
+
+          for (const segment of segments) {
+            const segmentDate = parseAttendanceDate(segment.date)!;
+
+            const attendance = await tx.attendance.upsert({
+              where: {
+                employeeId_date: {
+                  employeeId,
+                  date: segmentDate,
+                },
+              },
+              update: {},
+              create: {
+                employeeId,
+                date: segmentDate,
+                value: "",
+              },
+            });
+
+            const savedInterval = await tx.attendanceInterval.create({
+              data: {
+                attendanceId: attendance.id,
+                groupId: segment.groupId,
+                startMinute: segment.startMinute,
+                endMinute: segment.endMinute,
+              },
+            });
+
+            savedSegments.push({
+              ...savedInterval,
+              date: segment.date,
+            });
+          }
+
+          return {
+            hasOverlap: false as const,
+            data: savedSegments,
+          };
+        },
+        {
+          isolationLevel: "Serializable",
         }
+      );
 
-        return results;
-      });
+      // 7. Handle overlap response.
+      if (result.hasOverlap) {
+        res.status(409).json({
+          status: "error",
+          message: "This interval overlaps with existing attendance.",
+        });
+        return;
+      }
 
+      // 8. Return successful response.
       res.status(201).json({
         status: "success",
         message: "Attendance interval saved successfully.",
-        data: savedSegments,
+        data: result.data,
       });
+      return;
+
     } catch (error) {
-  console.error("Failed to save attendance interval:", error);
+      console.error("Failed to save attendance interval:", error);
 
-  // Prisma serialization conflict.
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "P2034"
-  ) {
-    res.status(409).json({
-      status: "error",
-      message: "A concurrent attendance update occurred. Please retry.",
-    });
-    return;
-  }
+      // Prisma serialization conflict.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "P2034"
+      ) {
+        res.status(409).json({
+          status: "error",
+          message: "A concurrent attendance update occurred. Please retry.",
+        });
+        return;
+      }
 
-  res.status(500).json({
-    status: "error",
-    message: "Failed to save attendance interval.",
-  });
-}
+      res.status(500).json({
+        status: "error",
+        message: "Failed to save attendance interval.",
+      });
+    }
   }
 );
+
 
 app.put(
   "/api/attendance/intervals/:groupId",

@@ -1,6 +1,13 @@
 import type { AttendancePeriodMode, DateKey } from "../utils/attendancePeriod";
-import { useAttendanceSummary } from "../hooks/useAttendanceSummary";
-import type { Department, Employee } from "../services/api";
+import {
+  calculateDailyIntervalTotals,
+  formatMinutesAsHours,
+} from "../utils/attendanceCalculation";
+import type {
+  Department,
+  Employee,
+  AttendanceRecord,
+} from "../services/api";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 
@@ -13,7 +20,7 @@ interface AttendanceToolbarProps {
   canSelectDepartment: boolean;
   departments: Department[];
   employees: Employee[];
-  attendance: Record<string, string>;
+  attendance: AttendanceRecord[];
 periodMode: AttendancePeriodMode;
 onPeriodModeChange: (
   mode: AttendancePeriodMode
@@ -53,14 +60,58 @@ function AttendanceToolbar({
           (employee) => employee.department.name === department
         ).length;
 
-  // Calculate attendance totals for the selected period
-  const summary = useAttendanceSummary(
-    department,
-    attendance,
-    employees,
-    startDate,
-    endDate
-  );
+  // Filter employees according to the selected department
+const filteredEmployees =
+  department === "all"
+    ? employees
+    : employees.filter(
+        (employee) => employee.department.name === department
+      );
+
+// Index attendance records for faster lookup
+const attendanceMap = new Map(
+  attendance.map((record) => [
+    `${record.employeeId}-${record.date.slice(0, 10)}`,
+    record,
+  ])
+);
+
+let r1Minutes = 0;
+let r2Minutes = 0;
+let r3Minutes = 0;
+
+// Calculate totals for every employee and every day
+const currentDate = new Date(`${startDate}T00:00:00.000Z`);
+const lastDate = new Date(`${endDate}T00:00:00.000Z`);
+
+while (currentDate <= lastDate) {
+  const date = currentDate.toISOString().slice(0, 10) as DateKey;
+
+  for (const employee of filteredEmployees) {
+    const record = attendanceMap.get(
+      `${employee.id}-${date}`
+    );
+
+    const dailyTotals = calculateDailyIntervalTotals(
+      record?.intervals ?? [],
+      date
+    );
+
+    r1Minutes += dailyTotals.r1Minutes;
+    r2Minutes += dailyTotals.r2Minutes;
+    r3Minutes += dailyTotals.r3Minutes;
+  }
+
+  currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+}
+
+const summary = {
+  normalHours: formatMinutesAsHours(r1Minutes),
+  overtimeHours: formatMinutesAsHours(r2Minutes + r3Minutes),
+  totalHours: formatMinutesAsHours(
+    r1Minutes + r2Minutes + r3Minutes
+  ),
+};
 
   const locale = i18n.language.startsWith("en")
     ? "en-US"

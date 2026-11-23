@@ -1,6 +1,6 @@
 
 import type { Employee } from "../services/api";
-import { calculatePeriodTotals } from "../utils/attendanceCalculations";
+import { calculatePeriodTotals } from "../utils/attendanceCalculation";
 import {
   type DateKey,
   getDatesBetween,
