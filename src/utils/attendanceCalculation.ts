@@ -167,3 +167,54 @@ export function formatMinutesAsHours(minutes: number): string {
     ? `${hours}`
     : `${hours}h${String(remainingMinutes).padStart(2, "0")}`;
 }
+
+export function calculateDailyCR(
+  intervals: { startMinute: number; endMinute: number }[],
+  date: DateKey,
+  publicHolidayDates: Set<string> = new Set()
+): number {
+  const day = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+
+  const isFriday = day === 5;
+  const isPublicHoliday = publicHolidayDates.has(date);
+
+  // Total worked time on this date
+  const totals = calculateDailyIntervalTotals(
+    intervals,
+    date,
+    publicHolidayDates
+  );
+
+  // Actual clock time inside 21:00–05:00
+  // Do not use totals.r3Minutes here because public holidays
+  // classify all working hours as R3.
+  let nightMinutes = 0;
+
+  for (const interval of intervals) {
+    nightMinutes += getOverlapMinutes(
+      interval.startMinute,
+      interval.endMinute,
+      0,
+      300
+    );
+
+    nightMinutes += getOverlapMinutes(
+      interval.startMinute,
+      interval.endMinute,
+      1260,
+      1440
+    );
+  }
+
+  const workedMoreThan7Hours = totals.totalMinutes > 7 * 60;
+
+  const earnsCR =
+    // Friday or public holiday: more than 7 hours
+    ((isFriday || isPublicHoliday) && workedMoreThan7Hours) ||
+
+    // Saturday through Thursday: any actual work from 21:00 to 05:00
+    // more than 4 actual night hours
+    (!isFriday && !isPublicHoliday && nightMinutes > 4 * 60);
+
+  return earnsCR ? 1 : 0;
+}

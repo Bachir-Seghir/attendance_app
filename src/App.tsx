@@ -630,7 +630,7 @@ onYearChange={handleYearChange}
   employeesError={employeesError}
   isLoadingAttendance={isLoadingAttendance}
   attendanceError={attendanceError}
-  canEditAttendance={canEditAttendance}
+          canEditAttendance={canEditAttendance}
 />
       </main>
     </div>
