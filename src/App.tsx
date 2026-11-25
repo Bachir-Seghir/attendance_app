@@ -12,7 +12,6 @@ import {
   updateAttendanceInterval,
   deleteAttendanceInterval,
   type AttendanceRecord,
-  type AttendanceInterval,
   type Employee,
   type AuthUser,
   type Department,
