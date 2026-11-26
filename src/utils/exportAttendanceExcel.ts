@@ -1,3 +1,4 @@
+
 import ExcelJS from "exceljs";
 import type {
   Employee,
@@ -6,12 +7,14 @@ import type {
 
 import {
   calculateDailyIntervalTotals,
+  formatMinutesAsHours,
 } from "./attendanceCalculation";
 
 import {
   type DateKey,
   getDatesBetween,
   isWeekendDate,
+  normalizeDateKey,
 } from "./attendancePeriod";
 
 interface ExportAttendanceOptions {
@@ -34,7 +37,10 @@ export async function exportAttendanceExcel({
   const dates = getDatesBetween(startDate, endDate);
   const totalDays = dates.length;
 
-  // Filter by selected department
+  // --------------------------------------------------
+  // FILTER EMPLOYEES
+  // --------------------------------------------------
+
   let filteredEmployees =
     department === "all"
       ? employees
@@ -42,7 +48,6 @@ export async function exportAttendanceExcel({
           (employee) => employee.department?.name === department
         );
 
-  // Export only the selected employee when employeeId is provided
   if (employeeId !== undefined) {
     filteredEmployees = filteredEmployees.filter(
       (employee) => employee.id === employeeId
@@ -53,181 +58,347 @@ export async function exportAttendanceExcel({
     throw new Error("No employees found to export.");
   }
 
+  const totalEmployees = filteredEmployees.length;
+
+  // --------------------------------------------------
+  // WORKBOOK
+  // --------------------------------------------------
+
   const workbook = new ExcelJS.Workbook();
+
   workbook.creator = "Platform de Pointage";
   workbook.created = new Date();
 
   const worksheet = workbook.addWorksheet("Pointage Mensuel");
 
+  const totalColumns = totalDays + 6;
+  const firstDateColumn = 7;
+
   const formatDate = (date: DateKey) =>
-    new Date(`${date}T00:00:00Z`).toLocaleDateString("fr-FR", {
+    new Date(`${date}T00:00:00.000Z`).toLocaleDateString("fr-FR", {
       day: "2-digit",
       month: "short",
       year: "numeric",
       timeZone: "UTC",
     });
 
-  const startLabel = formatDate(startDate);
-  const endLabel = formatDate(endDate);
+  // --------------------------------------------------
+  // ATTENDANCE LOOKUP
+  // --------------------------------------------------
 
-  // Report title
-  worksheet.mergeCells(1, 1, 1, totalDays + 5);
+  const attendanceMap = new Map(
+    attendance.map((record) => [
+      `${record.employeeId}-${normalizeDateKey(record.date)}`,
+      record,
+    ])
+  );
+
+  // --------------------------------------------------
+  // CALCULATE GLOBAL SUMMARY
+  // Same calculation as AttendanceToolbar
+  // --------------------------------------------------
+
+  let totalR1Minutes = 0;
+  let totalR2Minutes = 0;
+  let totalR3Minutes = 0;
+
+  for (const date of dates) {
+    for (const employee of filteredEmployees) {
+      const record = attendanceMap.get(
+        `${employee.id}-${date}`
+      );
+
+      const dailyTotals = calculateDailyIntervalTotals(
+        record?.intervals ?? [],
+        date
+      );
+
+      totalR1Minutes += dailyTotals.r1Minutes;
+      totalR2Minutes += dailyTotals.r2Minutes;
+      totalR3Minutes += dailyTotals.r3Minutes;
+    }
+  }
+
+  const summary = [
+    {
+      label: "HEURES NORMALES",
+      value: formatMinutesAsHours(totalR1Minutes),
+      background: "FFECFDF5",
+      border: "FFA7F3D0",
+      labelColor: "FF065F46",
+      valueColor: "FF064E3B",
+    },
+    {
+      label: "HEURES SUPPLÉMENTAIRES",
+      value: formatMinutesAsHours(
+        totalR2Minutes + totalR3Minutes
+      ),
+      background: "FFFFF7ED",
+      border: "FFFED7AA",
+      labelColor: "FFC2410C",
+      valueColor: "FF78350F",
+    },
+    {
+      label: "TOTAL HEURES",
+      value: formatMinutesAsHours(
+        totalR1Minutes + totalR2Minutes + totalR3Minutes
+      ),
+      background: "FFEFF6FF",
+      border: "FFBFDBFE",
+      labelColor: "FF334155",
+      valueColor: "FF0F172A",
+    },
+    {
+      label: "PERSONNEL TOTAL",
+      value: String(totalEmployees),
+      background: "FF065F46",
+      border: "FF065F46",
+      labelColor: "FFD1FAE5",
+      valueColor: "FFFFFFFF",
+    },
+  ];
+
+  // --------------------------------------------------
+  // TITLE
+  // --------------------------------------------------
+
+  worksheet.mergeCells(1, 1, 1, totalColumns);
 
   const titleCell = worksheet.getCell(1, 1);
-  titleCell.value = `POINTAGE - ${startLabel.toUpperCase()} AU ${endLabel.toUpperCase()}`;
-  titleCell.font = { bold: true, size: 16 };
+
+  titleCell.value =
+    `POINTAGE - ${formatDate(startDate).toUpperCase()} AU ${formatDate(endDate).toUpperCase()}`;
+
+  titleCell.font = {
+    bold: true,
+    size: 16,
+    color: { argb: "FFFFFFFF" },
+  };
+
   titleCell.alignment = {
     horizontal: "center",
     vertical: "middle",
   };
 
-  worksheet.getRow(1).height = 50;
-
-  // Column headers
-  const headers = [
-    "Nom & Prénom",
-    "Affect.",
-    "HN",
-    "HS",
-    "H.Total",
-    ...dates.map((date) => {
-      const currentDate = new Date(`${date}T00:00:00Z`);
-
-      const day = currentDate.getUTCDate();
-
-      const weekday = currentDate.toLocaleDateString("fr-FR", {
-        weekday: "short",
-        timeZone: "UTC",
-      });
-
-      const monthName = currentDate.toLocaleDateString("fr-FR", {
-        month: "short",
-        timeZone: "UTC",
-      });
-
-      return `${day}\n${weekday.charAt(0).toUpperCase()}\n${monthName}`;
-    }),
-  ];
-
-  worksheet.addRow(headers);
-
-  const headerRow = worksheet.getRow(2);
-  headerRow.height = 45;
-  headerRow.font = {
-    bold: true,
-    color: { argb: "FFFFFFFF" },
-  };
-  headerRow.alignment = {
-    horizontal: "center",
-    vertical: "middle",
-    wrapText: true,
-  };
-  headerRow.fill = {
+  titleCell.fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "FF334155" },
+    fgColor: { argb: "FF084B54" },
   };
 
-  // Employee attendance rows
-  // Employee attendance rows
-const attendanceMap = new Map(
-  attendance.map((record) => [
-    `${record.employeeId}-${record.date.slice(0, 10)}`,
-    record,
-  ])
-);
+  worksheet.getRow(1).height = 40;
 
-for (const employee of filteredEmployees) {
-  let r1Minutes = 0;
-  let r2Minutes = 0;
-  let r3Minutes = 0;
+  // --------------------------------------------------
+  // SUMMARY CARDS
+  // Rows 3 and 4
+  // --------------------------------------------------
 
-  const dailyValues = dates.map((date) => {
-    const record = attendanceMap.get(
-      `${employee.id}-${date}`
+  const cardCount = summary.length;
+
+  summary.forEach((card, index) => {
+    const startColumn =
+      Math.floor((index * totalColumns) / cardCount) + 1;
+
+    const endColumn =
+      Math.floor(((index + 1) * totalColumns) / cardCount);
+
+    // Label row
+    worksheet.mergeCells(
+      3,
+      startColumn,
+      3,
+      endColumn
     );
 
-    const dailyTotals = calculateDailyIntervalTotals(
-      record?.intervals ?? [],
-      date
+    // Value row
+    worksheet.mergeCells(
+      4,
+      startColumn,
+      4,
+      endColumn
     );
 
-    r1Minutes += dailyTotals.r1Minutes;
-    r2Minutes += dailyTotals.r2Minutes;
-    r3Minutes += dailyTotals.r3Minutes;
+    const labelCell = worksheet.getCell(3, startColumn);
+    const valueCell = worksheet.getCell(4, startColumn);
 
-    const totalMinutes =
-      dailyTotals.r1Minutes +
-      dailyTotals.r2Minutes +
-      dailyTotals.r3Minutes;
+    labelCell.value = card.label;
+    valueCell.value = card.value;
 
-    return totalMinutes > 0 ? totalMinutes / 60 : "";
+    [labelCell, valueCell].forEach((cell) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: card.background },
+      };
+
+      cell.border = {
+        top: { style: "medium", color: { argb: card.border } },
+        bottom: { style: "medium", color: { argb: card.border } },
+        left: { style: "medium", color: { argb: card.border } },
+        right: { style: "medium", color: { argb: card.border } },
+      };
+
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+    });
+
+    labelCell.font = {
+      bold: true,
+      size: 10,
+      color: { argb: card.labelColor },
+    };
+
+    valueCell.font = {
+      bold: true,
+      size: 20,
+      color: { argb: card.valueColor },
+    };
   });
 
-  const normalHours = r1Minutes / 60;
-  const overtimeHours = (r2Minutes + r3Minutes) / 60;
+  worksheet.getRow(3).height = 25;
+  worksheet.getRow(4).height = 38;
+  worksheet.getRow(5).height = 12;
 
-  const row = worksheet.addRow([
-    employee.name,
-    employee.department?.name ?? "",
-    normalHours,
-    overtimeHours,
-    normalHours + overtimeHours,
-    ...dailyValues,
-  ]);
+  // --------------------------------------------------
+  // TWO-LEVEL HEADERS
+  // Rows 6 and 7
+  // --------------------------------------------------
 
-  row.height = 30;
-}
-  // Column widths
-  worksheet.getColumn(1).width = 20;
-  worksheet.getColumn(2).width = 20;
-  worksheet.getColumn(3).width = 10;
-  worksheet.getColumn(4).width = 10;
-  worksheet.getColumn(5).width = 10;
+  worksheet.mergeCells("A6:A7");
+  worksheet.mergeCells("C6:D6");
+  worksheet.mergeCells("E6:E7");
+  worksheet.mergeCells("F6:F7");
 
   dates.forEach((_, index) => {
-    worksheet.getColumn(index + 6).width = 8;
+    const column = firstDateColumn + index;
+    worksheet.mergeCells(6, column, 7, column);
   });
 
-  // Color HN column - light green
-  worksheet.getColumn(3).eachCell((cell, rowNumber) => {
-    if (rowNumber >= 2) {
-      cell.font = { color: { argb: "FF000000" } };
+  worksheet.getCell("A6").value = "Employee";
+  worksheet.getCell("B6").value = "HN";
+  worksheet.getCell("C6").value = "HS";
+  worksheet.getCell("E6").value = "All";
+  worksheet.getCell("F6").value = "CR";
+
+  worksheet.getCell("B7").value = "R1";
+  worksheet.getCell("C7").value = "R2";
+  worksheet.getCell("D7").value = "R3";
+
+  dates.forEach((date, index) => {
+    const currentDate = new Date(`${date}T00:00:00.000Z`);
+
+    const day = currentDate.getUTCDate();
+
+    const weekday = currentDate.toLocaleDateString("fr-FR", {
+      weekday: "short",
+      timeZone: "UTC",
+    });
+
+    const column = firstDateColumn + index;
+
+    worksheet.getCell(6, column).value =
+      `${day}\n${weekday.charAt(0).toUpperCase()}`;
+  });
+
+  // Header styling
+  [6, 7].forEach((rowNumber) => {
+    const row = worksheet.getRow(rowNumber);
+
+    row.height = rowNumber === 6 ? 30 : 25;
+
+    row.eachCell((cell) => {
+      cell.font = {
+        bold: true,
+        color: { argb: "FFFFFFFF" },
+      };
+
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+
       cell.fill = {
         type: "pattern",
         pattern: "solid",
-        fgColor: { argb: "FFDCFCE7" },
+        fgColor: { argb: "FF084B54" },
       };
-    }
+
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFFFFFFF" } },
+        bottom: { style: "thin", color: { argb: "FFFFFFFF" } },
+        left: { style: "thin", color: { argb: "FFFFFFFF" } },
+        right: { style: "thin", color: { argb: "FFFFFFFF" } },
+      };
+    });
   });
 
-  // Color HS column - light red
-  worksheet.getColumn(4).eachCell((cell, rowNumber) => {
-    if (rowNumber >= 2) {
-      cell.font = { color: { argb: "FF000000" } };
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFFEE2E2" },
-      };
-    }
+  // --------------------------------------------------
+  // EMPLOYEE ROWS
+  // --------------------------------------------------
+
+  for (const employee of filteredEmployees) {
+    let r1Minutes = 0;
+    let r2Minutes = 0;
+    let r3Minutes = 0;
+
+    const dailyValues = dates.map((date) => {
+      const record = attendanceMap.get(
+        `${employee.id}-${date}`
+      );
+
+      const dailyTotals = calculateDailyIntervalTotals(
+        record?.intervals ?? [],
+        date
+      );
+
+      r1Minutes += dailyTotals.r1Minutes;
+      r2Minutes += dailyTotals.r2Minutes;
+      r3Minutes += dailyTotals.r3Minutes;
+
+      return dailyTotals.totalMinutes > 0
+        ? formatMinutesAsHours(dailyTotals.totalMinutes)
+        : "";
+    });
+
+    const row = worksheet.addRow([
+      employee.name,
+      formatMinutesAsHours(r1Minutes),
+      formatMinutesAsHours(r2Minutes),
+      formatMinutesAsHours(r3Minutes),
+      formatMinutesAsHours(
+        r1Minutes + r2Minutes + r3Minutes
+      ),
+      "—",
+      ...dailyValues,
+    ]);
+
+    row.height = 30;
+  }
+
+  // --------------------------------------------------
+  // COLUMN WIDTHS
+  // --------------------------------------------------
+
+  worksheet.getColumn(1).width = 25;
+  worksheet.getColumn(2).width = 10;
+  worksheet.getColumn(3).width = 10;
+  worksheet.getColumn(4).width = 10;
+  worksheet.getColumn(5).width = 12;
+  worksheet.getColumn(6).width = 10;
+
+  dates.forEach((_, index) => {
+    worksheet.getColumn(firstDateColumn + index).width = 9;
   });
 
-  // Color H.Total column - light yellow
-  worksheet.getColumn(5).eachCell((cell, rowNumber) => {
-    if (rowNumber >= 2) {
-      cell.font = { color: { argb: "FF000000" } };
-      cell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFFEF9C3" },
-      };
-    }
-  });
+  // --------------------------------------------------
+  // EMPLOYEE ROW FORMATTING
+  // --------------------------------------------------
 
-  // Format employee rows
   worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber <= 2) return;
+    if (rowNumber <= 7) return;
 
     row.alignment = {
       horizontal: "center",
@@ -242,27 +413,58 @@ for (const employee of filteredEmployees) {
         right: { style: "thin", color: { argb: "FFD1D5DB" } },
       };
 
-      if (columnNumber <= 2) {
+      if (columnNumber === 1) {
         cell.alignment = {
           horizontal: "left",
           vertical: "middle",
         };
+
+        cell.font = { bold: true };
       }
 
-      if (columnNumber >= 6) {
+      if (columnNumber >= firstDateColumn) {
         cell.font = { bold: true };
       }
     });
   });
 
-  // Highlight Friday and Saturday columns
+  // --------------------------------------------------
+  // SUMMARY COLUMN COLORS
+  // --------------------------------------------------
+
+  const summaryColors: Record<number, string> = {
+    2: "FFDCFCE7",
+    3: "FFFEE2E2",
+    4: "FFFEE2E2",
+    5: "FFFEF9C3",
+    6: "FFF1F5F9",
+  };
+
+  Object.entries(summaryColors).forEach(([column, color]) => {
+    worksheet.getColumn(Number(column)).eachCell(
+      (cell, rowNumber) => {
+        if (rowNumber >= 8) {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: color },
+          };
+        }
+      }
+    );
+  });
+
+  // --------------------------------------------------
+  // WEEKEND HIGHLIGHTING
+  // --------------------------------------------------
+
   dates.forEach((date, index) => {
     if (!isWeekendDate(date)) return;
 
-    const column = worksheet.getColumn(index + 6);
+    const column = worksheet.getColumn(firstDateColumn + index);
 
     column.eachCell((cell, rowNumber) => {
-      if (rowNumber >= 2) {
+      if (rowNumber >= 8) {
         cell.fill = {
           type: "pattern",
           pattern: "solid",
@@ -272,16 +474,22 @@ for (const employee of filteredEmployees) {
     });
   });
 
-  // Freeze employee information and header rows
+  // --------------------------------------------------
+  // FREEZE HEADERS AND EMPLOYEE COLUMN
+  // --------------------------------------------------
+
   worksheet.views = [
     {
       state: "frozen",
-      xSplit: 2,
-      ySplit: 2,
+      xSplit: 1,
+      ySplit: 7,
     },
   ];
 
-  // Generate and download Excel file
+  // --------------------------------------------------
+  // DOWNLOAD
+  // --------------------------------------------------
+
   const buffer = await workbook.xlsx.writeBuffer();
 
   const blob = new Blob([buffer as BlobPart], {
@@ -292,7 +500,9 @@ for (const employee of filteredEmployees) {
   const link = document.createElement("a");
 
   const departmentSuffix =
-    department === "all" ? "Toutes_Les_Structures" : department;
+    department === "all"
+      ? "Toutes_Les_Structures"
+      : department;
 
   const safeDepartmentSuffix = departmentSuffix.replace(
     /[\\/:*?"<>|]/g,
@@ -300,7 +510,9 @@ for (const employee of filteredEmployees) {
   );
 
   link.href = url;
-  link.download = `Pointage_SOMIK_${startDate}_${endDate}_${safeDepartmentSuffix}.xlsx`;
+
+  link.download =
+    `Pointage_SOMIK_${startDate}_${endDate}_${safeDepartmentSuffix}.xlsx`;
 
   document.body.appendChild(link);
   link.click();
