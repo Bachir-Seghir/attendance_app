@@ -7,6 +7,7 @@ import type {
   Department,
   Employee,
   AttendanceRecord,
+  AttendancePeriodLock,
 } from "../services/api";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
@@ -21,6 +22,12 @@ interface AttendanceToolbarProps {
   departments: Department[];
   employees: Employee[];
   attendance: AttendanceRecord[];
+    canManagePeriodLock: boolean;
+  previousPeriod: AttendancePeriodLock | null;
+  isLoadingPeriodLock: boolean;
+  isUpdatingPeriodLock: boolean;
+  periodLockError: string;
+  onPreviousPeriodLockChange: () => void;
 periodMode: AttendancePeriodMode;
 onPeriodModeChange: (
   mode: AttendancePeriodMode
@@ -45,6 +52,12 @@ function AttendanceToolbar({
   departments,
   periodMode,
   onPeriodModeChange,
+    canManagePeriodLock,
+  previousPeriod,
+  isLoadingPeriodLock,
+  isUpdatingPeriodLock,
+  periodLockError,
+  onPreviousPeriodLockChange,
 }: AttendanceToolbarProps) {
   const { t } = useTranslation();
 
@@ -568,6 +581,128 @@ return (
       </div>
 
     </div>
+
+    
+      {canManagePeriodLock && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                previousPeriod?.previousPeriodUnlocked
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-emerald-100 text-emerald-700"
+              }`}
+            >
+              {previousPeriod?.previousPeriodUnlocked ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                  <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="11" width="18" height="11" rx="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              )}
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold text-slate-800">
+                Previous attendance period
+              </p>
+
+              {isLoadingPeriodLock ? (
+                <p className="text-xs text-slate-500">
+                  Loading period status...
+                </p>
+              ) : previousPeriod ? (
+                <>
+                  <p className="text-xs text-slate-500">
+                    {new Date(
+                      `${previousPeriod.startDate.slice(0, 10)}T00:00:00Z`
+                    ).toLocaleDateString(locale, {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      timeZone: "UTC",
+                    })}
+                    {" – "}
+                    {new Date(
+                      `${previousPeriod.endDate.slice(0, 10)}T00:00:00Z`
+                    ).toLocaleDateString(locale, {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      timeZone: "UTC",
+                    })}
+                  </p>
+
+                  <p
+                    className={`mt-1 text-xs font-semibold ${
+                      previousPeriod.previousPeriodUnlocked
+                        ? "text-amber-700"
+                        : "text-emerald-700"
+                    }`}
+                  >
+                    {previousPeriod.previousPeriodUnlocked
+                      ? "UNLOCKED — Editing allowed"
+                      : "LOCKED — Editing disabled"}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Period status unavailable.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {previousPeriod && (
+            <button
+              type="button"
+              onClick={onPreviousPeriodLockChange}
+              disabled={isLoadingPeriodLock || isUpdatingPeriodLock}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                previousPeriod.previousPeriodUnlocked
+                  ? "bg-emerald-700 hover:bg-emerald-800"
+                  : "bg-amber-600 hover:bg-amber-700"
+              }`}
+            >
+              {isUpdatingPeriodLock
+                ? "Updating..."
+                : previousPeriod.previousPeriodUnlocked
+                  ? "Lock Previous Period"
+                  : "Unlock Previous Period"}
+            </button>
+          )}
+          
+          {periodLockError && (
+            <p className="w-full text-sm text-red-600">
+              {periodLockError}
+            </p>
+          )}
+        </div>
+      )}
 
   </section>
 );

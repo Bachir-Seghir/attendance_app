@@ -11,6 +11,9 @@ import {
   createAttendanceInterval,
   updateAttendanceInterval,
   deleteAttendanceInterval,
+    getPreviousAttendancePeriod,
+  setPreviousAttendancePeriodLock,
+  type AttendancePeriodLock,
   type AttendanceRecord,
   type Employee,
   type AuthUser,
@@ -105,9 +108,95 @@ const [isSaving, setIsSaving] = useState(false);
     setDepartments(data);
   };
   
+    const canManagePeriodLock =
+    user.role === "SUPER_ADMIN" || user.role === "MANAGER";
+
+  const [previousPeriod, setPreviousPeriod] =
+    useState<AttendancePeriodLock | null>(null);
+
+  const [isLoadingPeriodLock, setIsLoadingPeriodLock] = useState(false);
+  const [isUpdatingPeriodLock, setIsUpdatingPeriodLock] = useState(false);
+  const [periodLockError, setPeriodLockError] = useState("");
+
   useEffect(() => {
     loadDepartments().catch(console.error);
   }, []);
+  
+    useEffect(() => {
+    if (!canManagePeriodLock) return;
+
+    let cancelled = false;
+
+    const loadPreviousPeriod = async () => {
+      setIsLoadingPeriodLock(true);
+      setPeriodLockError("");
+
+      try {
+        const period = await getPreviousAttendancePeriod();
+
+        if (!cancelled) {
+          setPreviousPeriod(period);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPeriodLockError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load attendance period status."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPeriodLock(false);
+        }
+      }
+    };
+
+    loadPreviousPeriod();
+
+    return () => {
+      cancelled = true;
+    };
+    }, [canManagePeriodLock]);
+  
+    const handlePreviousPeriodLockChange = async () => {
+    if (!canManagePeriodLock || !previousPeriod || isUpdatingPeriodLock) {
+      return;
+    }
+
+    const newUnlockedState = !previousPeriod.previousPeriodUnlocked;
+
+    const action = newUnlockedState ? "unlock" : "lock";
+
+    const confirmed = window.confirm(
+      newUnlockedState
+        ? "Are you sure you want to unlock the previous attendance period?"
+        : "Are you sure you want to lock the previous attendance period again?"
+    );
+
+    if (!confirmed) return;
+
+    setIsUpdatingPeriodLock(true);
+    setPeriodLockError("");
+
+    try {
+      const updatedPeriod = await setPreviousAttendancePeriodLock(
+        newUnlockedState
+      );
+
+      setPreviousPeriod(updatedPeriod);
+    } catch (error) {
+      console.error(`Failed to ${action} previous attendance period:`, error);
+
+      setPeriodLockError(
+        error instanceof Error
+          ? error.message
+          : `Failed to ${action} the previous attendance period.`
+      );
+    } finally {
+      setIsUpdatingPeriodLock(false);
+    }
+    };
   
   const loadEmployees = async () => {
     setIsLoadingEmployees(true);
@@ -609,7 +698,12 @@ onYearChange={handleYearChange}
           canSelectDepartment={canViewAllDepartments}
           departments={departments}
           employees={employees}
-
+                    canManagePeriodLock={canManagePeriodLock}
+          previousPeriod={previousPeriod}
+          isLoadingPeriodLock={isLoadingPeriodLock}
+          isUpdatingPeriodLock={isUpdatingPeriodLock}
+          periodLockError={periodLockError}
+          onPreviousPeriodLockChange={handlePreviousPeriodLockChange}
         />
 
         <AttendanceTable

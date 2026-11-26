@@ -68,6 +68,46 @@ export async function apiRequest<T>(
   }
 }
 
+
+//* ============================================================*
+//* ATTENDANCE PERIOD LOCK
+//* ============================================================*
+
+export interface AttendancePeriodLock {
+  startDate: string;
+  endDate: string;
+  previousPeriodUnlocked: boolean;
+}
+
+interface AttendancePeriodLockResponse {
+  status: string;
+  message?: string;
+  period: AttendancePeriodLock;
+}
+
+export async function getPreviousAttendancePeriod(): Promise<AttendancePeriodLock> {
+  const response = await apiRequest<AttendancePeriodLockResponse>(
+    "/attendance-period/previous"
+  );
+
+  return response.period;
+}
+
+export async function setPreviousAttendancePeriodLock(
+  unlocked: boolean
+): Promise<AttendancePeriodLock> {
+  const response = await apiRequest<AttendancePeriodLockResponse>(
+    "/attendance-period/previous",
+    {
+      method: "PATCH",
+      body: JSON.stringify({ unlocked }),
+    }
+  );
+
+  return response.period;
+}
+
+
 // ============================================================
 // AUTHENTICATION
 // ============================================================
