@@ -7,7 +7,7 @@ import type { Employee, AttendanceRecord } from "../services/api";
 import {
 
   calculateDailyIntervalTotals,
-
+getDefaultAttendanceCode,
   formatMinutesAsHours,
 
 } from "../utils/attendanceCalculation";
@@ -45,7 +45,7 @@ interface AttendanceTableProps {
   employees: Employee[];
 
   attendance: AttendanceRecord[];
-
+publicHolidayDates: Set<string>;
 
   hasUnsavedChanges: boolean;
 
@@ -102,7 +102,11 @@ interface AttendanceTableProps {
   onDeleteInterval: (groupId: string) => void;
 
   onSaveAttendance: () => void;
-
+onSaveCode: (
+  employeeId: number,
+  date: string,
+  value: string
+  ) => void;
 }
 
 
@@ -340,7 +344,8 @@ function AttendanceTable({
   onDeleteInterval,
 
   onSaveAttendance,
-
+  publicHolidayDates,
+onSaveCode,
 
 }: AttendanceTableProps) {
 
@@ -365,10 +370,8 @@ function AttendanceTable({
 
 
   const [activeCell, setActiveCell] = useState<string | null>(null);
-
-  const [quickValues, setQuickValues] = useState<Record<string, string>>({});
-
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+const [codeValues, setCodeValues] = useState<Record<string, string>>({});
 
 
 
@@ -524,8 +527,8 @@ const formatSegmentTime = (minute: number) =>
 
       record?.intervals ?? [],
 
-      date as DateKey
-
+      date as DateKey,
+publicHolidayDates,
     );
 
   };
@@ -660,58 +663,47 @@ const formatSegmentTime = (minute: number) =>
 
 
 
-  const handleQuickEntry = (
-
-    employeeId: number,
-
-    date: string
-
-  ) => {
-
-    const key = getCellKey(employeeId, date);
-
-    const hours = Number(quickValues[key]);
+  
 
 
+const handleCellEntry = (
+  employeeId: number,
+  date: string
+) => {
+  const key = getCellKey(employeeId, date);
+  const value = codeValues[key]?.trim().toUpperCase();
 
-    if (!Number.isInteger(hours) || hours < 1 || hours > 8) {
+  if (!value) return;
 
+  // Numeric shortcut: 1–8 hours.
+  if (/^[1-8]$/.test(value)) {
+    onCreateInterval(
+      employeeId,
+      date,
+      480,
+      480 + Number(value) * 60
+    );
+  } else {
+    const validCodes = [
+      "R", "F", "CA", "CR", "CF", "FO", "AA", "AI",
+    ];
+
+    if (!validCodes.includes(value)) {
+      window.alert("Invalid entry. Use 1–8 or a valid attendance code.");
       return;
-
     }
 
+    onSaveCode(employeeId, date, value);
+  }
 
+  setCodeValues((previous) => ({
+    ...previous,
+    [key]: "",
+  }));
 
-    onCreateInterval(
-
-      employeeId,
-
-      date,
-
-      480,
-
-      480 + hours * 60
-
-    );
-
-
-
-    setQuickValues((previous) => ({
-
-      ...previous,
-
-      [key]: "",
-
-    }));
-
-
-
-    setActiveCell(null);
-
-  };
-
-
-
+  setActiveCell(null);
+};
+  
   const isWeekend = (date: string) => {
 
     const day = new Date(
@@ -953,7 +945,19 @@ const formatSegmentTime = (minute: number) =>
 
                     );
 
+                    const record = attendance.find(
+  (item) =>
+    item.employeeId === employee.id &&
+    item.date.slice(0, 10) === date
+);
 
+const defaultCode =
+  intervals.length === 0 && !record?.value?.trim()
+    ? getDefaultAttendanceCode(
+        date as DateKey,
+        publicHolidayDates
+      )
+    : null;
 
                     const totalsForDay = getDailyTotals(
 
@@ -969,370 +973,318 @@ const formatSegmentTime = (minute: number) =>
 
 
 
-                    const quickValue = quickValues[key] ?? "";
 
 
 
                     return (
-
-                      <td
-
-                        key={date}
-
-                        className={`border-b border-l border-slate-100 p-1 text-center align-top ${
-                          isWeekend(date) ? "bg-orange-100" : "bg-white"
-                        }`}
-
-                        onBlur={(event) => {
-
-                          if (
-
-                            !event.currentTarget.contains(
-
-                              event.relatedTarget
-
-                            )
-
-                          ) {
-
-                            setActiveCell((current) =>
-
-                              current === key ? null : current
-
-                            );
-
-                          }
-
-                        }}
-
-                      >
-
-                        {!isActive ? (
-
-                          <div className="flex flex-col items-center gap-1">
-
-                            {intervals.length > 0 ? (
-  <div className="relative flex flex-col">
-    <button
-      type="button"
-      className="text-lg rounded-md bg-emerald-50 px-2.5 py-2 font-bold text-emerald-700 transition hover:bg-emerald-100"
-      onClick={() => setActiveCell(key)}
-    >
-      {formatMinutesAsHours(totalsForDay.totalMinutes)}
-    </button>
-
-    <span className="text-[10px] font-medium text-slate-400">
-      {intervals.length} Period(s)
-                                </span>
-                                <button
-                                  title="Ajouter Heures Sup."
-      type="button"
-      onClick={() => openNewInterval(employee.id, date)}
-      className="absolute top-0 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-white bg-emerald-500 text-base  text-white shadow-sm transition hover:bg-orange-500"
-    >
-      +
-    </button>
-  </div>
-) : canEditAttendance ? (
-  <div className="relative h-12 w-12">
-                                  <input
-                                    title="Entrez Heures Normal 1-8"
-      type="number"
-      min="1"
-      max="8"
-      value={quickValue}
-      placeholder="h"
-      className="h-12 w-12 rounded-lg border border-slate-200 bg-white text-center text-sm font-semibold text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-blue-100"
-      onChange={(event) =>
-        setQuickValues((previous) => ({
-          ...previous,
-          [key]: event.target.value,
-        }))
-      }
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          handleQuickEntry(employee.id, date);
-        }
-      }}
-      onBlur={() => {
-        if (quickValue) {
-          handleQuickEntry(employee.id, date);
-        }
-      }}
-    />
-
-                                  <button
-                                    title="Ajouter Heures Sup."
-      type="button"
-      onClick={() => openNewInterval(employee.id, date)}
-      className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-white bg-emerald-500 text-base  text-white shadow-sm transition hover:bg-orange-500"
-    >
-      +
-    </button>
-  </div>
-) : (
-  <span className="text-slate-800">—</span>
-)}
-
-
-
-                          </div>
-
-                        ) : (
-
-                          <div className="relative z-20 min-w-52 rounded-xl border border-blue-200 bg-slate-100 text-slate-800 px-3 py-2 shadow-lg shadow-blue-100/60 space-y-1">
-
-                            <div className="flex justify-between items-center">
-
-                              <strong className="text-md">
-
-                                {date}
-
-                              </strong>
-
-                              <button
-
-                                type="button"
-
-                                onClick={() =>
-
-                                  setActiveCell(null)
-
-                                }
-
-                                className="rounded-md px-2 py-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-
-                              >
-
-                                ×
-
-                              </button>
-
-                            </div>
-
-
-
-                            {intervals.map((interval) => {
-
-  const segment = getIntervalSegmentForDate(interval, date);
-
-
-
-  return (
-
-    <div
-
-      key={interval.groupId}
-
-      className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-2 text-xmd text-slate-700 font-semibold"
-
-    >
-
-      <span>
-
-        {formatSegmentTime(segment.startMinute)}
-
-        {" – "}
-
-        {formatSegmentTime(segment.endMinute)}
-
-      </span>
-
-
-
-      {canEditAttendance && (
-
-        <span className="flex gap-1">
-
-          <button
-
-            type="button"
-
-            className="font-semibold text-blue-600 transition hover:text-blue-800"
-
-            onClick={() => openEditInterval(interval)}
-
-          >
-
-            Edit
-
-          </button>
-
-
-
-          <button
-
-            type="button"
-
-            className="font-semibold text-red-600 transition hover:text-red-800"
-
-            onClick={() =>
-
-              onDeleteInterval(interval.groupId)
-
-            }
-
-          >
-
-            Delete
-
-          </button>
-
+											<td
+												key={date}
+												className={`border-b border-l border-slate-100 p-1 text-center align-top ${
+													isWeekend(date) ? "bg-orange-100" : "bg-white"
+												}`}
+												onBlur={(event) => {
+													if (
+														!event.currentTarget.contains(event.relatedTarget)
+													) {
+														setActiveCell((current) =>
+															current === key ? null : current,
+														);
+													}
+												}}
+											>
+												{!isActive ? (
+  <div className="flex flex-col items-center gap-1">
+    {intervals.length > 0 ? (
+      <div className="relative flex flex-col">
+        <button
+          type="button"
+          className="text-lg rounded-md bg-emerald-50 px-2.5 py-2 font-bold text-emerald-700 transition hover:bg-emerald-100"
+          onClick={() => setActiveCell(key)}
+        >
+          {formatMinutesAsHours(totalsForDay.totalMinutes)}
+        </button>
+
+        <span className="text-[10px] font-medium text-slate-400">
+          {intervals.length} Period(s)
         </span>
 
-      )}
+        {canEditAttendance && (
+          <button
+            title="Ajouter Heures Sup."
+            type="button"
+            onClick={() => openNewInterval(employee.id, date)}
+            className="absolute top-0 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-base text-white shadow-sm hover:bg-orange-500"
+          >
+            +
+          </button>
+        )}
+      </div>
+    ) : record?.value?.trim() || defaultCode ? (
+      <button
+        type="button"
+        disabled={!canEditAttendance}
+        onClick={() => {
+          setCodeValues((previous) => ({
+            ...previous,
+            [key]: record?.value?.trim() || defaultCode || "",
+          }));
+          setActiveCell(key);
+        }}
+        className={`inline-flex h-12 min-w-12 items-center justify-center rounded-lg px-2 text-lg font-bold ${
+          record?.value?.trim() === "F" || defaultCode === "F"
+            ? "bg-red-100 text-red-700"
+            : "bg-orange-100 text-orange-700"
+        } disabled:cursor-default`}
+      >
+        {record?.value?.trim() || defaultCode}
+      </button>
+    ) : canEditAttendance ? (
+      <div className="relative h-12 w-12">
+        <input
+          title="Enter 1–8 hours or an attendance code"
+          type="text"
+          value={codeValues[key] ?? ""}
+          placeholder="h"
+          maxLength={2}
+          className="h-12 w-12 rounded-lg border border-slate-200 bg-white text-center text-sm font-semibold uppercase text-slate-700 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-blue-100"
+          onChange={(event) =>
+            setCodeValues((previous) => ({
+              ...previous,
+              [key]: event.target.value.toUpperCase(),
+            }))
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              handleCellEntry(employee.id, date);
+            }
+          }}
+          onBlur={() => {
+            if (codeValues[key]?.trim()) {
+              handleCellEntry(employee.id, date);
+            }
+          }}
+        />
 
+        <button
+          title="Ajouter Heures Sup."
+          type="button"
+          onClick={() => openNewInterval(employee.id, date)}
+          className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-base text-white shadow-sm hover:bg-orange-500"
+        >
+          +
+        </button>
+      </div>
+    ) : (
+      <span className="text-slate-800">—</span>
+    )}
+  </div>
+) : (
+													<div
+  className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+  onClick={() => {
+    setActiveCell(null);
+    setEditingGroupId(null);
+  }}
+>
+  <div
+    role="dialog"
+    aria-modal="true"
+    aria-label="Edit attendance"
+    onClick={(event) => event.stopPropagation()}
+    className="max-h-[85vh] w-full max-w-md space-y-3 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-800 shadow-2xl"
+  >
+														<div className="flex items-center justify-between border-b border-slate-200 pb-3">
+  <div>
+    <h3 className="text-lg font-bold text-slate-800">
+      Edit attendance
+    </h3>
+    <p className="text-sm text-slate-500">
+      {employee.name} — {date}
+    </p>
+  </div>
+
+  <button
+    type="button"
+    onClick={() => {
+      setActiveCell(null);
+      setEditingGroupId(null);
+    }}
+    className="rounded-lg px-3 py-1 text-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+  >
+    ×
+  </button>
+</div>
+
+														{intervals.map((interval) => {
+															const segment = getIntervalSegmentForDate(
+																interval,
+																date,
+															);
+
+															return (
+																<div
+																	key={interval.groupId}
+																	className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2 py-2 text-xmd text-slate-700 font-semibold"
+																>
+																	<span>
+																		{formatSegmentTime(segment.startMinute)}
+
+																		{" – "}
+
+																		{formatSegmentTime(segment.endMinute)}
+																	</span>
+
+																	{canEditAttendance && (
+																		<span className="flex gap-1">
+																			<button
+																				type="button"
+																				className="font-semibold text-blue-600 transition hover:text-blue-800"
+																				onClick={() =>
+																					openEditInterval(interval)
+																				}
+																			>
+																				Edit
+																			</button>
+
+																			<button
+																				type="button"
+																				className="font-semibold text-red-600 transition hover:text-red-800"
+																				onClick={() =>
+																					onDeleteInterval(interval.groupId)
+																				}
+																			>
+																				Delete
+																			</button>
+																		</span>
+																	)}
+																</div>
+															);
+														})}
+
+														<div className="rounded-lg border-t border-slate-100 pt-3 text-xs font-bold text-slate-600">
+															R1: {formatMinutesAsHours(totalsForDay.r1Minutes)}
+															{" | "}
+															R2: {formatMinutesAsHours(totalsForDay.r2Minutes)}
+															{" | "}
+															R3: {formatMinutesAsHours(totalsForDay.r3Minutes)}
+														</div>
+{canEditAttendance && (
+  <div className="space-y-2 border-t border-slate-200 pt-2">
+    <label className="block text-xs font-semibold text-slate-700">
+      Attendance code
+    </label>
+
+    <div
+      role="radiogroup"
+      aria-label="Attendance code"
+      className="grid grid-cols-4 gap-2"
+    >
+      {["R", "F", "CA", "CR", "CF", "FO", "AA", "AI"].map((code) => {
+        const selectedCode =
+          (codeValues[key] ?? record?.value ?? "").toUpperCase();
+
+        const isSelected = selectedCode === code;
+
+        return (
+          <button
+            key={code}
+            type="button"
+            role="radio"
+            aria-checked={isSelected}
+            onClick={() =>
+              setCodeValues((previous) => ({
+                ...previous,
+                [key]: code,
+              }))
+            }
+            className={`rounded-md border px-3 py-2 text-sm font-bold transition-colors ${
+              isSelected
+                ? "border-orange-500 bg-orange-500 text-white shadow-sm"
+                : "border-slate-300 bg-white text-slate-700 hover:border-orange-400 hover:bg-orange-50"
+            }`}
+          >
+            {code}
+          </button>
+        );
+      })}
     </div>
 
-  );
-
-})}
-
-
-
-                            <div className="rounded-lg border-t border-slate-100 pt-3 text-xs font-bold text-slate-600">
-
-                              R1: {formatMinutesAsHours(totalsForDay.r1Minutes)}
-
-                              {" | "}
-
-                              R2: {formatMinutesAsHours(totalsForDay.r2Minutes)}
-
-                              {" | "}
-
-                              R3: {formatMinutesAsHours(totalsForDay.r3Minutes)}
-
-                            </div>
-
-
-
-                            {canEditAttendance && (
-
-                              <>
-
-                                <div className="flex gap-2">
-
-                                  <label className="flex-1 text-xs text-slate-900">
-
-                                    Start
-
-                                    <input
-
-                                      type="time"
-
-                                      value={startTime}
-
-                                      onChange={(event) =>
-
-                                        setStartTime(event.target.value)
-
-                                      }
-
-                                      className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 "
-
-                                    />
-
-                                  </label>
-
-
-
-                                  <label className="flex-1 text-xs text-slate-900">
-
-                                    End
-
-                                    <input
-
-                                      type="time"
-
-                                      value={endTime}
-
-                                      onChange={(event) =>
-
-                                        setEndTime(event.target.value)
-
-                                      }
-
-                                      className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-
-                                    />
-
-                                  </label>
-
-                                </div>
-
-
-
-                                <div className="flex gap-2">
-
-                                  <button
-
-                                    type="button"
-
-                                    onClick={() =>
-
-                                      saveIntervalDraft(
-
-                                        employee.id,
-
-                                        editingGroupId
-
-                                          ? logicalIntervals.find(
-
-                                              (item) =>
-
-                                                item.groupId === editingGroupId
-
-                                            )?.date ?? date
-
-                                          : date
-
-                                      )
-
-                                    }
-
-                                    className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-
-                                  >
-
-                                    {editingGroupId ? "Update" : "Add interval"}
-
-                                  </button>
-
-
-
-                                  <button
-
-                                    type="button"
-
-                                    onClick={() => {
-
-                                      setEditingGroupId(null);
-
-                                      setActiveCell(null);
-
-                                    }}
-
-                                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
-
-                                  >
-
-                                    Cancel
-
-                                  </button>
-
-                                </div>
-
-                              </>
-
-                            )}
-
-                          </div>
-
-                        )}
-
-                      </td>
-
-                    );
+    <button
+      type="button"
+      onClick={() => handleCellEntry(employee.id, date)}
+      className="w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+    >
+      Save code
+    </button>
+  </div>
+)}
+														{canEditAttendance && (
+															<>
+																<div className="flex gap-2">
+																	<label className="flex-1 text-xs font-semibold text-green-500">
+																		Start
+																		<input
+																			type="time"
+																			value={startTime}
+																			onChange={(event) =>
+																				setStartTime(event.target.value)
+																			}
+																			className="mt-1 w-full rounded-lg border border-green-500 p-2 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-green-700"
+																		/>
+																	</label>
+
+																	<label className="flex-1 text-xs font-semibold text-red-500">
+																		End
+																		<input
+																			type="time"
+																			value={endTime}
+																			onChange={(event) =>
+																				setEndTime(event.target.value)
+																			}
+																			className="mt-1 w-full rounded-lg border border-red-500 p-2 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-red-500"
+																		/>
+																	</label>
+																</div>
+
+																<div className="flex gap-2">
+																	<button
+																		type="button"
+																		onClick={() =>
+																			saveIntervalDraft(
+																				employee.id,
+
+																				editingGroupId
+																					? (logicalIntervals.find(
+																							(item) =>
+																								item.groupId === editingGroupId,
+																						)?.date ?? date)
+																					: date,
+																			)
+																		}
+																		className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+																	>
+																		{editingGroupId ? "Update" : "Add interval"}
+																	</button>
+
+																	<button
+																		type="button"
+																		onClick={() => {
+																			setEditingGroupId(null);
+
+																			setActiveCell(null);
+																		}}
+																		className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
+																	>
+																		Cancel
+																	</button>
+																</div>
+															</>
+														)}
+  </div>
+</div>
+)}
+											</td>
+										);
 
                   })}
 

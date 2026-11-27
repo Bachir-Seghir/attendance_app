@@ -1,3 +1,9 @@
+enum PeriodStartLock {
+  AUTO
+  LOCKED
+  UNLOCKED
+}
+
 enum Role {
   SUPER_ADMIN
   MANAGER
@@ -105,6 +111,7 @@ model AttendancePeriod {
   startDate              DateTime  @db.Date
   endDate                DateTime  @db.Date
   previousPeriodUnlocked Boolean   @default(false)
+  periodStartLock        PeriodStartLock @default(AUTO)
   holidaysConfirmedAt    DateTime?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt

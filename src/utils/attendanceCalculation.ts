@@ -4,6 +4,25 @@ import {
   isWeekendDate,
 } from "./attendancePeriod";
 
+
+export type DefaultAttendanceCode = "R" | "F" | null;
+
+export function getDefaultAttendanceCode(
+  date: DateKey,
+  publicHolidayDates: Set<string>
+): DefaultAttendanceCode {
+  // Public holiday takes priority over rest day.
+  if (publicHolidayDates.has(date)) {
+    return "F";
+  }
+
+  if (isWeekendDate(date)) {
+    return "R";
+  }
+
+  return null;
+}
+
 export interface DailyHours {
   normalHours: number;
   overtimeHours: number;
